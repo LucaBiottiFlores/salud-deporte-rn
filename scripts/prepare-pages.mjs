@@ -6,6 +6,10 @@ import { join } from 'node:path';
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 
+// GitHub Pages runs Jekyll by default and skips directories starting with "_".
+// This file disables Jekyll so the `_expo` bundle is served as-is.
+writeFileSync(join(dist, '.nojekyll'), '');
+
 function walk(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
