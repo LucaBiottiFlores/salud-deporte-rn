@@ -26,7 +26,11 @@ for (const file of walk(dist)) {
   let s = readFileSync(file, 'utf8');
   const before = s;
   if (file.endsWith('.html')) {
-    s = s.replace(/\/_expo\//g, './_expo/').replace('href="/favicon.ico"', 'href="./favicon.ico"');
+    // Normaliza rutas a _expo de forma idempotente:
+    // "/_expo/", "../_expo/" y "./_expo/" terminan todas en "./_expo/".
+    s = s
+      .replace(/(src|href)="(?:\.\.\/|\/)?_expo\//g, '$1="./_expo/')
+      .replace('href="/favicon.ico"', 'href="./favicon.ico"');
   } else {
     s = s.replace(/"\/assets\//g, '"./assets/');
   }
