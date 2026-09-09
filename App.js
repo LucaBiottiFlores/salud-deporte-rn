@@ -15,7 +15,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio as ExpoAudio } from 'expo-av';
 import * as Speech from 'expo-speech';
-import Svg, { Circle, G, Line, Polygon, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, Polygon, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from './src/supabase';
@@ -39,69 +39,75 @@ const REP_RANGE_PRESETS = {
 const MUSCLE_GROUPS = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Antebrazos', 'Piernas', 'Core'];
 
 const LIGHT_COLORS = {
-  bg: '#f7f4ef',
-  panel: '#ffffff',
-  accent: '#2f7a53',
+  bg: '#eef2f8',
+  panel: '#f7fafd',
+  accent: '#0e8a8f',
   onAccent: '#ffffff',
-  volt: '#2f7a53',
-  text: '#222220',
-  muted: '#6e6c66',
-  rest: '#3e8e6a',
-  ready: '#cf8b2f',
-  border: '#e7e3db',
-  ghost: '#8a877f',
+  volt: '#0e8a8f',
+  text: '#1b1f2a',
+  muted: '#66707f',
+  rest: '#2fa3b5',
+  ready: '#d18a2c',
+  border: '#dbe3ef',
+  ghost: '#8b93a3',
   danger: '#c14f4a',
-  softBg: '#eef1ec',
-  softBorder: '#d6e0d7',
-  prBg: '#f1ece1',
-  glass: 'rgba(255,255,255,0.68)',
-  glassBorder: 'rgba(255,255,255,0.6)',
-  glassCard: 'rgba(255,255,255,0.55)',
-  glassInput: 'rgba(255,255,255,0.45)',
+  softBg: '#e3eaf4',
+  softBorder: '#d2dbe8',
+  prBg: '#e7edf6',
+  irid: '#8b83d8',
+  sheen: 'rgba(255,255,255,0.30)',
+  glass: 'rgba(255,255,255,0.62)',
+  glassBorder: 'rgba(255,255,255,0.75)',
+  glassCard: 'rgba(255,255,255,0.52)',
+  glassInput: 'rgba(255,255,255,0.44)',
 };
 
 const DARK_COLORS = {
-  bg: '#101014',
-  panel: '#1b1b21',
-  accent: '#6ee7a8',
-  onAccent: '#0d0d10',
-  volt: '#6ee7a8',
-  text: '#f2f2f5',
-  muted: '#b0b0ba',
-  rest: '#4fd1a0',
+  bg: '#0c111c',
+  panel: '#151c2a',
+  accent: '#5ad2d6',
+  onAccent: '#071019',
+  volt: '#5ad2d6',
+  text: '#eef2f8',
+  muted: '#98a4b5',
+  rest: '#55c7dd',
   ready: '#f0b45a',
-  border: '#2a2a33',
-  ghost: '#9ca3af',
+  border: '#232e44',
+  ghost: '#8b98ad',
   danger: '#f27d78',
-  softBg: '#1d1d25',
-  softBorder: '#2f2f3a',
-  prBg: '#1e1e27',
-  glass: 'rgba(28,28,36,0.62)',
-  glassBorder: 'rgba(255,255,255,0.08)',
-  glassCard: 'rgba(255,255,255,0.05)',
-  glassInput: 'rgba(0,0,0,0.28)',
+  softBg: '#161f30',
+  softBorder: '#26324a',
+  prBg: '#131c2b',
+  irid: '#7a6fd6',
+  sheen: 'rgba(255,255,255,0.07)',
+  glass: 'rgba(21,28,42,0.62)',
+  glassBorder: 'rgba(255,255,255,0.12)',
+  glassCard: 'rgba(255,255,255,0.06)',
+  glassInput: 'rgba(6,10,18,0.4)',
 };
 
 const TIMER_COLORS = {
-  bg: '#0b0b0f',
-  panel: '#15151c',
-  accent: '#c8f31d',
-  onAccent: '#0b0b0f',
-  volt: '#c8f31d',
-  text: '#f5f5f7',
-  muted: '#9a9aa6',
-  rest: '#38bdf8',
-  ready: '#f59e0b',
-  border: '#26262e',
-  ghost: '#9ca3af',
+  bg: '#070b12',
+  panel: '#0e1622',
+  accent: '#4fd1d5',
+  onAccent: '#061014',
+  volt: '#4fd1d5',
+  text: '#f2f5f9',
+  muted: '#93a0b2',
+  rest: '#4fc3f0',
+  ready: '#f5a524',
+  border: '#1a2536',
+  ghost: '#8b98ad',
   danger: '#f87171',
-  softBg: '#1c1c22',
-  softBorder: '#2c2c36',
-  prBg: '#1a1a20',
-  glass: '#15151c',
-  glassBorder: '#26262e',
-  glassCard: '#1c1c22',
-  glassInput: '#0b0b0f',
+  softBg: '#111a29',
+  softBorder: '#1e2a3d',
+  prBg: '#0e1622',
+  irid: '#6f66c9',
+  sheen: 'rgba(255,255,255,0.05)',
+  glass: 'rgba(14,22,34,0.62)',
+  glassBorder: 'rgba(255,255,255,0.14)',
+  glassCard: 'rgba(19,30,48,0.50)',
+  glassInput: 'rgba(7,11,18,0.40)',
 };
 
 const THEMES = { light: LIGHT_COLORS, dark: DARK_COLORS };
@@ -130,6 +136,8 @@ const SOUND_PRESETS = {
 };
 
 const isWeb = Platform.OS === 'web';
+// Frostrar el vidrio de verdad en web (react-native-web 0.21 soporta backdropFilter).
+const GLASS_BLUR = isWeb ? 'blur(30px) saturate(160%)' : undefined;
 
 function formatTimeInput(digits) {
   if (!digits) return '';
@@ -478,89 +486,36 @@ function mapAuthError(err) {
   return GENERIC_AUTH_ERROR;
 }
 
-function AuroraBackground({ pulse }) {
-  const b1 = useRef(new Animated.Value(0)).current;
-  const b2 = useRef(new Animated.Value(0)).current;
-  const b3 = useRef(new Animated.Value(0)).current;
-  const glow = useRef(new Animated.Value(0)).current;
+function AuroraBackground() {
+  const drift = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const loop = (val, dur) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(val, {
-            toValue: 1,
-            duration: dur,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(val, {
-            toValue: 0,
-            duration: dur,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-    const l1 = loop(b1, 16000);
-    const l2 = loop(b2, 24000);
-    const l3 = loop(b3, 32000);
-    l1.start();
-    l2.start();
-    l3.start();
-    return () => {
-      l1.stop();
-      l2.stop();
-      l3.stop();
-    };
-  }, [b1, b2, b3]);
-
-  const prevPulse = useRef(pulse);
-  useEffect(() => {
-    if (pulse !== prevPulse.current) {
-      prevPulse.current = pulse;
-      glow.stopAnimation();
-      glow.setValue(0);
+    const l = Animated.loop(
       Animated.sequence([
-        Animated.timing(glow, {
+        Animated.timing(drift, {
           toValue: 1,
-          duration: 320,
-          easing: Easing.out(Easing.ease),
+          duration: 26000,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-        Animated.timing(glow, {
+        Animated.timing(drift, {
           toValue: 0,
-          duration: 620,
-          easing: Easing.in(Easing.ease),
+          duration: 26000,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-      ]).start();
-    }
-  }, [pulse, glow]);
+      ]),
+    );
+    l.start();
+    return () => l.stop();
+  }, [drift]);
 
-  const blob1Style = {
+  const driftStyle = {
     transform: [
-      { translateX: b1.interpolate({ inputRange: [0, 1], outputRange: [-30, 30] }) },
-      { translateY: b1.interpolate({ inputRange: [0, 1], outputRange: [-24, 24] }) },
-      { scale: b1.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] }) },
+      { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-32, 32] }) },
+      { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [20, -20] }) },
+      { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) },
     ],
-  };
-  const blob2Style = {
-    transform: [
-      { translateX: b2.interpolate({ inputRange: [0, 1], outputRange: [28, -28] }) },
-      { translateY: b2.interpolate({ inputRange: [0, 1], outputRange: [20, -20] }) },
-      { scale: b2.interpolate({ inputRange: [0, 1], outputRange: [1, 1.4] }) },
-    ],
-  };
-  const blob3Style = {
-    transform: [
-      { translateX: b3.interpolate({ inputRange: [0, 1], outputRange: [-20, 20] }) },
-      { translateY: b3.interpolate({ inputRange: [0, 1], outputRange: [18, -18] }) },
-      { scale: b3.interpolate({ inputRange: [0, 1], outputRange: [1.2, 1] }) },
-    ],
-  };
-  const glowStyle = {
-    opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.22] }),
   };
 
   return (
@@ -572,36 +527,58 @@ function AuroraBackground({ pulse }) {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
         />
-        <Animated.View
-          style={[
-            styles.auroraBlob,
-            { width: 300, height: 300, backgroundColor: colors.accent, opacity: 0.14, top: -60, right: -60 },
-            blob1Style,
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.auroraBlob,
-            { width: 300, height: 300, backgroundColor: colors.ready, opacity: 0.13, bottom: -80, left: -70 },
-            blob2Style,
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.auroraBlob,
-            { width: 260, height: 260, backgroundColor: colors.rest, opacity: 0.12, top: 200, left: -60 },
-            blob3Style,
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.auroraGlow,
-            { width: 360, height: 360, backgroundColor: colors.accent, top: 40, right: -40 },
-            glowStyle,
-          ]}
+        <Animated.View style={[StyleSheet.absoluteFillObject, driftStyle]}>
+          <Svg
+            width="100%"
+            height="100%"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            style={StyleSheet.absoluteFillObject}
+          >
+            <Defs>
+              <RadialGradient id="lgAccent" cx="78" cy="6" r="48" gradientUnits="userSpaceOnUse">
+                <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.32" />
+                <Stop offset="55%" stopColor={colors.accent} stopOpacity="0.11" />
+                <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="lgRest" cx="8" cy="92" r="54" gradientUnits="userSpaceOnUse">
+                <Stop offset="0%" stopColor={colors.rest} stopOpacity="0.28" />
+                <Stop offset="55%" stopColor={colors.rest} stopOpacity="0.10" />
+                <Stop offset="100%" stopColor={colors.rest} stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="lgIrid" cx="20" cy="14" r="50" gradientUnits="userSpaceOnUse">
+                <Stop offset="0%" stopColor={colors.irid} stopOpacity="0.24" />
+                <Stop offset="55%" stopColor={colors.irid} stopOpacity="0.08" />
+                <Stop offset="100%" stopColor={colors.irid} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Circle cx="78" cy="6" r="48" fill="url(#lgAccent)" />
+            <Circle cx="8" cy="92" r="54" fill="url(#lgRest)" />
+            <Circle cx="20" cy="14" r="50" fill="url(#lgIrid)" />
+            <Circle cx="94" cy="64" r="42" fill="url(#lgRest)" />
+            <Circle cx="-8" cy="48" r="46" fill="url(#lgIrid)" />
+          </Svg>
+        </Animated.View>
+        <LinearGradient
+          colors={['rgba(255,255,255,0)', colors.sheen, 'rgba(255,255,255,0)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
         />
       </View>
     </View>
+  );
+}
+
+function GlassSheen({ radius }) {
+  return (
+    <LinearGradient
+      colors={[colors.sheen, 'rgba(255,255,255,0)', 'rgba(255,255,255,0)']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.glassSheen, { borderRadius: radius }]}
+      pointerEvents="none"
+    />
   );
 }
 
@@ -611,7 +588,6 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [recoveryMode, setRecoveryMode] = useState(false);
-  const [tabPulse, setTabPulse] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -672,7 +648,6 @@ export default function App() {
 
   function changeTab(tab) {
     setActiveTab(tab);
-    setTabPulse((n) => n + 1);
   }
 
   if (authLoading) {
@@ -697,7 +672,7 @@ export default function App() {
 
   return (
     <View style={styles.app}>
-      <AuroraBackground pulse={tabPulse} />
+      <AuroraBackground />
       <View style={styles.container}>
         <View style={styles.headerShadow}>
           <View style={styles.header}>
@@ -709,6 +684,7 @@ export default function App() {
                 pointerEvents="none"
               />
             ) : null}
+            <GlassSheen radius={20} />
             <Text style={styles.title}>KO FIT</Text>
             <Text style={styles.tagline}>Entrená. Progresa. Vuelve.</Text>
           </View>
@@ -724,6 +700,7 @@ export default function App() {
                 pointerEvents="none"
               />
             ) : null}
+            <GlassSheen radius={18} />
             <TabButton
               label="HIIT"
               active={activeTab === 'tabata'}
@@ -757,7 +734,7 @@ export default function App() {
           </View>
         </View>
 
-        <View style={[styles.view, { display: activeTab === 'tabata' ? 'flex' : 'none', backgroundColor: colors.bg }]}>
+        <View style={[styles.view, { display: activeTab === 'tabata' ? 'flex' : 'none' }]}>
           <TabataScreen />
         </View>
         <View style={[styles.view, { display: activeTab === 'notas' ? 'flex' : 'none' }]}>
@@ -3371,11 +3348,10 @@ function makeStyles() {
     left: 0,
     right: 0,
     bottom: 0,
-    alignItems: 'center',
+    overflow: 'hidden',
   },
   auroraBase: {
     width: '100%',
-    maxWidth: 480,
     flex: 1,
     overflow: 'hidden',
   },
@@ -3386,6 +3362,9 @@ function makeStyles() {
   auroraGlow: {
     position: 'absolute',
     borderRadius: 999,
+  },
+  glassSheen: {
+    ...StyleSheet.absoluteFillObject,
   },
   headerShadow: {
     marginBottom: 12,
@@ -3400,7 +3379,9 @@ function makeStyles() {
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.glassBorder,
+    borderTopColor: colors.sheen,
     backgroundColor: colors.glass,
+    backdropFilter: GLASS_BLUR,
     overflow: 'hidden',
   },
   headerBlur: {
@@ -3432,6 +3413,8 @@ function makeStyles() {
     padding: 5,
     borderWidth: 1,
     borderColor: colors.glassBorder,
+    borderTopColor: colors.sheen,
+    backdropFilter: GLASS_BLUR,
     overflow: 'hidden',
   },
   tabBarBlur: {
@@ -3466,10 +3449,12 @@ function makeStyles() {
   },
   panel: {
     backgroundColor: colors.glass,
+    backdropFilter: GLASS_BLUR,
     borderRadius: 22,
     padding: 20,
     borderWidth: 1,
     borderColor: colors.glassBorder,
+    borderTopColor: colors.sheen,
     shadowColor: '#000000',
     shadowOpacity: 0.07,
     shadowRadius: 16,
@@ -3493,6 +3478,7 @@ function makeStyles() {
   },
   input: {
     backgroundColor: colors.glassInput,
+    backdropFilter: GLASS_BLUR,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderRadius: 12,
@@ -3667,6 +3653,7 @@ function makeStyles() {
     padding: 14,
     marginBottom: 12,
     backgroundColor: colors.glassCard,
+    backdropFilter: GLASS_BLUR,
     shadowColor: '#000000',
     shadowOpacity: 0.05,
     shadowRadius: 10,
@@ -3931,6 +3918,7 @@ function makeStyles() {
     padding: 14,
     marginBottom: 10,
     backgroundColor: colors.glassCard,
+    backdropFilter: GLASS_BLUR,
   },
   glossaryTitle: {
     fontSize: 15,
@@ -4041,6 +4029,7 @@ function makeStyles() {
     width: '100%',
     maxWidth: 400,
     backgroundColor: colors.glass,
+    backdropFilter: GLASS_BLUR,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
@@ -4179,6 +4168,7 @@ function makeStyles() {
     marginTop: 'auto',
     marginBottom: 'auto',
     backgroundColor: colors.glass,
+    backdropFilter: GLASS_BLUR,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
@@ -4409,6 +4399,7 @@ function makeStyles() {
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassCard,
+    backdropFilter: GLASS_BLUR,
     alignItems: 'center',
   },
   statValue: {
