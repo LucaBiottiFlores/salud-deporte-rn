@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   Platform,
   ScrollView,
@@ -13,13 +15,19 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio as ExpoAudio } from 'expo-av';
 import * as Speech from 'expo-speech';
+import Svg, { Circle, G, Line, Polygon, Text as SvgText } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from './src/supabase';
 
 const CONFIG_KEY = 'salud-deporte:config';
 const NOTES_KEY = 'salud-deporte:notas';
 const PROGRESION_KEY = 'salud-deporte:progresion';
+const HIIT_LOG_KEY = 'salud-deporte:hiit-log';
 
 const GENERIC_AUTH_ERROR = 'No se pudo completar la acción. Revisá los datos e intentalo de nuevo.';
+
+const SITE_URL = 'https://lucabiottiflores.github.io/salud-deporte-rn/';
 
 // Rangos de reps con respaldo en la literatura de sobrecarga progresiva:
 // fuerza 1-6 reps, hipertrofia 6-15 reps. Fijos para evitar rangos sin límite.
@@ -27,6 +35,8 @@ const REP_RANGE_PRESETS = {
   fuerza: ['1-3', '3-5', '4-6'],
   hipertrofia: ['6-10', '8-12', '10-15'],
 };
+
+const MUSCLE_GROUPS = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Antebrazos', 'Piernas', 'Core'];
 
 const LIGHT_COLORS = {
   bg: '#f7f4ef',
@@ -44,6 +54,10 @@ const LIGHT_COLORS = {
   softBg: '#eef1ec',
   softBorder: '#d6e0d7',
   prBg: '#f1ece1',
+  glass: 'rgba(255,255,255,0.68)',
+  glassBorder: 'rgba(255,255,255,0.6)',
+  glassCard: 'rgba(255,255,255,0.55)',
+  glassInput: 'rgba(255,255,255,0.45)',
 };
 
 const DARK_COLORS = {
@@ -62,6 +76,10 @@ const DARK_COLORS = {
   softBg: '#1d1d25',
   softBorder: '#2f2f3a',
   prBg: '#1e1e27',
+  glass: 'rgba(28,28,36,0.62)',
+  glassBorder: 'rgba(255,255,255,0.08)',
+  glassCard: 'rgba(255,255,255,0.05)',
+  glassInput: 'rgba(0,0,0,0.28)',
 };
 
 const TIMER_COLORS = {
@@ -80,6 +98,10 @@ const TIMER_COLORS = {
   softBg: '#1c1c22',
   softBorder: '#2c2c36',
   prBg: '#1a1a20',
+  glass: '#15151c',
+  glassBorder: '#26262e',
+  glassCard: '#1c1c22',
+  glassInput: '#0b0b0f',
 };
 
 const THEMES = { light: LIGHT_COLORS, dark: DARK_COLORS };
@@ -231,6 +253,14 @@ function shortDate(ts) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function startOfWeek(ts) {
+  const d = new Date(ts);
+  const day = (d.getDay() + 6) % 7; // lunes = 0
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
+  start.setHours(0, 0, 0, 0);
+  return start.getTime();
+}
+
 function computePRs(ex) {
   const sessions = ex.sessions || [];
   let e1 = { v: 0, ts: 0 };
@@ -380,7 +410,7 @@ function normalizeExercise(ex) {
           : [],
       }))
     : [];
-  return { ...ex, repMin, repMax, incrementKg, sessions };
+  return { ...ex, repMin, repMax, incrementKg, muscle: MUSCLE_GROUPS.includes(ex?.muscle) ? ex.muscle : 'Pecho', sessions };
 }
 
 function parseRepRange(str) {
@@ -448,12 +478,140 @@ function mapAuthError(err) {
   return GENERIC_AUTH_ERROR;
 }
 
+function AuroraBackground({ pulse }) {
+  const b1 = useRef(new Animated.Value(0)).current;
+  const b2 = useRef(new Animated.Value(0)).current;
+  const b3 = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = (val, dur) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(val, {
+            toValue: 1,
+            duration: dur,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(val, {
+            toValue: 0,
+            duration: dur,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+    const l1 = loop(b1, 16000);
+    const l2 = loop(b2, 24000);
+    const l3 = loop(b3, 32000);
+    l1.start();
+    l2.start();
+    l3.start();
+    return () => {
+      l1.stop();
+      l2.stop();
+      l3.stop();
+    };
+  }, [b1, b2, b3]);
+
+  const prevPulse = useRef(pulse);
+  useEffect(() => {
+    if (pulse !== prevPulse.current) {
+      prevPulse.current = pulse;
+      glow.stopAnimation();
+      glow.setValue(0);
+      Animated.sequence([
+        Animated.timing(glow, {
+          toValue: 1,
+          duration: 320,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glow, {
+          toValue: 0,
+          duration: 620,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [pulse, glow]);
+
+  const blob1Style = {
+    transform: [
+      { translateX: b1.interpolate({ inputRange: [0, 1], outputRange: [-30, 30] }) },
+      { translateY: b1.interpolate({ inputRange: [0, 1], outputRange: [-24, 24] }) },
+      { scale: b1.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] }) },
+    ],
+  };
+  const blob2Style = {
+    transform: [
+      { translateX: b2.interpolate({ inputRange: [0, 1], outputRange: [28, -28] }) },
+      { translateY: b2.interpolate({ inputRange: [0, 1], outputRange: [20, -20] }) },
+      { scale: b2.interpolate({ inputRange: [0, 1], outputRange: [1, 1.4] }) },
+    ],
+  };
+  const blob3Style = {
+    transform: [
+      { translateX: b3.interpolate({ inputRange: [0, 1], outputRange: [-20, 20] }) },
+      { translateY: b3.interpolate({ inputRange: [0, 1], outputRange: [18, -18] }) },
+      { scale: b3.interpolate({ inputRange: [0, 1], outputRange: [1.2, 1] }) },
+    ],
+  };
+  const glowStyle = {
+    opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.22] }),
+  };
+
+  return (
+    <View style={styles.auroraBackdrop} pointerEvents="none">
+      <View style={styles.auroraBase}>
+        <LinearGradient
+          colors={[colors.bg, colors.softBg, colors.prBg]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <Animated.View
+          style={[
+            styles.auroraBlob,
+            { width: 300, height: 300, backgroundColor: colors.accent, opacity: 0.14, top: -60, right: -60 },
+            blob1Style,
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.auroraBlob,
+            { width: 300, height: 300, backgroundColor: colors.ready, opacity: 0.13, bottom: -80, left: -70 },
+            blob2Style,
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.auroraBlob,
+            { width: 260, height: 260, backgroundColor: colors.rest, opacity: 0.12, top: 200, left: -60 },
+            blob3Style,
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.auroraGlow,
+            { width: 360, height: 360, backgroundColor: colors.accent, top: 40, right: -40 },
+            glowStyle,
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('tabata');
   const [dark, setDark] = useState(false);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [recoveryMode, setRecoveryMode] = useState(false);
+  const [tabPulse, setTabPulse] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -512,6 +670,11 @@ export default function App() {
     } catch (_) {}
   }
 
+  function changeTab(tab) {
+    setActiveTab(tab);
+    setTabPulse((n) => n + 1);
+  }
+
   if (authLoading) {
     return (
       <View style={styles.app}>
@@ -534,41 +697,67 @@ export default function App() {
 
   return (
     <View style={styles.app}>
+      <AuroraBackground pulse={tabPulse} />
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Impulso Fit</Text>
-          <Text style={styles.tagline}>HIIT · Notas · Progresión · Glosario · Ajustes</Text>
+        <View style={styles.headerShadow}>
+          <View style={styles.header}>
+            {Platform.OS !== 'web' ? (
+              <BlurView
+                intensity={60}
+                tint={dark ? 'dark' : 'light'}
+                style={styles.headerBlur}
+                pointerEvents="none"
+              />
+            ) : null}
+            <Text style={styles.title}>KO FIT</Text>
+            <Text style={styles.tagline}>Entrená. Progresa. Vuelve.</Text>
+          </View>
         </View>
 
-        <View style={styles.tabBar}>
-          <TabButton
-            label="HIIT"
-            active={activeTab === 'tabata'}
-            onPress={() => setActiveTab('tabata')}
-          />
-          <TabButton
-            label="Notas"
-            active={activeTab === 'notas'}
-            onPress={() => setActiveTab('notas')}
-          />
-          <TabButton
-            label="Progresión"
-            active={activeTab === 'progresion'}
-            onPress={() => setActiveTab('progresion')}
-          />
-          <TabButton
-            label="Glosario"
-            active={activeTab === 'glosario'}
-            onPress={() => setActiveTab('glosario')}
-          />
-          <TabButton
-            label="Ajustes"
-            active={activeTab === 'ajustes'}
-            onPress={() => setActiveTab('ajustes')}
-          />
+        <View style={styles.tabBarShadow}>
+          <View style={styles.tabBar}>
+            {Platform.OS !== 'web' ? (
+              <BlurView
+                intensity={55}
+                tint={dark ? 'dark' : 'light'}
+                style={styles.tabBarBlur}
+                pointerEvents="none"
+              />
+            ) : null}
+            <TabButton
+              label="HIIT"
+              active={activeTab === 'tabata'}
+              onPress={() => changeTab('tabata')}
+            />
+            <TabButton
+              label="Notas"
+              active={activeTab === 'notas'}
+              onPress={() => changeTab('notas')}
+            />
+            <TabButton
+              label="Progresión"
+              active={activeTab === 'progresion'}
+              onPress={() => changeTab('progresion')}
+            />
+            <TabButton
+              label="Glosario"
+              active={activeTab === 'glosario'}
+              onPress={() => changeTab('glosario')}
+            />
+            <TabButton
+              label="Ajustes"
+              active={activeTab === 'ajustes'}
+              onPress={() => changeTab('ajustes')}
+            />
+            <TabButton
+              label="Perfil"
+              active={activeTab === 'perfil'}
+              onPress={() => changeTab('perfil')}
+            />
+          </View>
         </View>
 
-        <View style={[styles.view, { display: activeTab === 'tabata' ? 'flex' : 'none' }]}>
+        <View style={[styles.view, { display: activeTab === 'tabata' ? 'flex' : 'none', backgroundColor: colors.bg }]}>
           <TabataScreen />
         </View>
         <View style={[styles.view, { display: activeTab === 'notas' ? 'flex' : 'none' }]}>
@@ -588,6 +777,13 @@ export default function App() {
             userEmail={session && session.user ? session.user.email : ''}
           />
         </View>
+        <View style={[styles.view, { display: activeTab === 'perfil' ? 'flex' : 'none' }]}>
+          <PerfilScreen
+            user={session.user}
+            active={activeTab === 'perfil'}
+            onLogout={() => supabase.auth.signOut()}
+          />
+        </View>
       </View>
     </View>
   );
@@ -602,7 +798,7 @@ function AuthScaffold({ title, subtitle, children }) {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.authCard}>
-          <Text style={styles.authBrand}>Impulso Fit</Text>
+          <Text style={styles.authBrand}>KO FIT</Text>
           {title ? <Text style={styles.authTitle}>{title}</Text> : null}
           {subtitle ? <Text style={styles.authSubtitle}>{subtitle}</Text> : null}
           {children}
@@ -681,7 +877,10 @@ function LoginForm({ onSwitch }) {
     setBusy(true);
     setError('');
     try {
-      const { error: err } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+      const { error: err } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: SITE_URL },
+      });
       if (err) setError(mapAuthError(err));
     } catch (_) {
       setError(GENERIC_AUTH_ERROR);
@@ -691,7 +890,7 @@ function LoginForm({ onSwitch }) {
   }
 
   return (
-    <AuthScaffold title="Iniciar sesión" subtitle="Bienvenido de vuelta a Impulso Fit.">
+    <AuthScaffold title="Iniciar sesión" subtitle="Bienvenido de vuelta a KO FIT.">
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Correo electrónico</Text>
         <TextInput
@@ -1166,14 +1365,58 @@ function AuthFlow({ recoveryMode, onRecovered }) {
 }
 
 function TabButton({ label, active, onPress }) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  function handlePressIn() {
+    Animated.timing(scale, { toValue: 0.96, duration: 90, useNativeDriver: true }).start();
+  }
+
+  function handlePressOut() {
+    Animated.timing(scale, { toValue: 1, duration: 140, useNativeDriver: true }).start();
+  }
+
   return (
     <TouchableOpacity
       style={[styles.tab, active && styles.tabActive]}
       onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
+      activeOpacity={1}
     >
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+function PrimaryButton({ onPress, disabled, style, children }) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  function handlePressIn() {
+    if (disabled) return;
+    Animated.timing(scale, { toValue: 0.98, duration: 90, useNativeDriver: true }).start();
+  }
+
+  function handlePressOut() {
+    Animated.timing(scale, { toValue: 1, duration: 140, useNativeDriver: true }).start();
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.btnPrimary, style, disabled && styles.btnDisabled]}
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={disabled}
+      accessibilityRole="button"
+      activeOpacity={1}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        {children}
+      </Animated.View>
     </TouchableOpacity>
   );
 }
@@ -1448,6 +1691,15 @@ function TabataScreen() {
   function finish() {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = null;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(HIIT_LOG_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        const log = Array.isArray(parsed) ? parsed : [];
+        log.push(Date.now());
+        await AsyncStorage.setItem(HIIT_LOG_KEY, JSON.stringify(log));
+      } catch (_) {}
+    })();
     const totalSec = phasesRef.current.reduce(
       (acc, p) => acc + (p.type === 'ready' ? 0 : p.seconds),
       0
@@ -1638,9 +1890,9 @@ function TabataScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.btnPrimary} onPress={start}>
+        <PrimaryButton onPress={start}>
           <Text style={styles.btnPrimaryText}>Comenzar</Text>
-        </TouchableOpacity>
+        </PrimaryButton>
 
         {configError ? <Text style={styles.error}>{configError}</Text> : null}
       </View>
@@ -1697,10 +1949,9 @@ function NotesScreen() {
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.panel}>
         <View style={styles.notesHeader}>
-          <Text style={styles.panelTitle}>Notas</Text>
-          <TouchableOpacity style={styles.btnPrimary} onPress={handleNewNote}>
+          <PrimaryButton onPress={handleNewNote}>
             <Text style={styles.btnPrimaryText}>+ Nueva nota</Text>
-          </TouchableOpacity>
+          </PrimaryButton>
         </View>
 
         {sorted.length === 0 ? (
@@ -1848,6 +2099,7 @@ function ProgresionScreen() {
   const [showForm, setShowForm] = useState(false);
   const [formName, setFormName] = useState('');
   const [formGoal, setFormGoal] = useState('fuerza');
+  const [formMuscle, setFormMuscle] = useState('Pecho');
   const [formRepRange, setFormRepRange] = useState('3-5');
   const [formIncrement, setFormIncrement] = useState('2.5');
   const [formError, setFormError] = useState('');
@@ -1907,6 +2159,7 @@ function ProgresionScreen() {
   function resetForm() {
     setFormName('');
     setFormGoal('fuerza');
+    setFormMuscle('Pecho');
     setFormRepRange('3-5');
     setFormIncrement('2.5');
     setFormError('');
@@ -1935,6 +2188,7 @@ function ProgresionScreen() {
       id: makeId(),
       name,
       goal: formGoal,
+      muscle: formMuscle,
       repMin: range.min,
       repMax: range.max,
       incrementKg,
@@ -2058,10 +2312,9 @@ function ProgresionScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.panel}>
         <View style={styles.notesHeader}>
-          <Text style={styles.panelTitle}>Progresión</Text>
-          <TouchableOpacity style={styles.btnPrimary} onPress={() => setShowForm((v) => !v)}>
+          <PrimaryButton onPress={() => setShowForm((v) => !v)}>
             <Text style={styles.btnPrimaryText}>{showForm ? 'Cerrar' : '+ Nuevo ejercicio'}</Text>
-          </TouchableOpacity>
+          </PrimaryButton>
         </View>
 
         {showForm ? (
@@ -2095,6 +2348,28 @@ function ProgresionScreen() {
                       ]}
                     >
                       {goal === 'fuerza' ? 'Fuerza' : 'Hipertrofia'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Grupo muscular</Text>
+              <View style={styles.chipRow}>
+                {MUSCLE_GROUPS.map((muscle) => (
+                  <TouchableOpacity
+                    key={muscle}
+                    style={[styles.goalChip, formMuscle === muscle && styles.goalChipActive]}
+                    onPress={() => setFormMuscle(muscle)}
+                  >
+                    <Text
+                      style={[
+                        styles.goalChipText,
+                        formMuscle === muscle && styles.goalChipTextActive,
+                      ]}
+                    >
+                      {muscle}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -2327,6 +2602,9 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
                 {exercise.goal === 'fuerza' ? 'Fuerza' : 'Hipertrofia'}
               </Text>
             </View>
+            <View style={styles.muscleBadge}>
+              <Text style={styles.muscleBadgeText}>{exercise.muscle || 'Pecho'}</Text>
+            </View>
           </View>
           <Text style={styles.chevron}>{collapsed ? '▸' : '▾'}</Text>
         </TouchableOpacity>
@@ -2395,9 +2673,9 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
 
       {draft.error ? <Text style={styles.error}>{draft.error}</Text> : null}
 
-      <TouchableOpacity style={styles.btnPrimary} onPress={onAddSet}>
+      <PrimaryButton onPress={onAddSet}>
         <Text style={styles.btnPrimaryText}>Agregar serie</Text>
-      </TouchableOpacity>
+      </PrimaryButton>
 
       {sets.length > 0 ? (
         <View style={styles.seriesList}>
@@ -2488,7 +2766,6 @@ function GlosarioScreen() {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Glosario</Text>
         {GLOSARIO_TERMS.map((term) => (
           <View key={term.title} style={styles.glossaryCard}>
             <Text style={styles.glossaryTitle}>{term.title}</Text>
@@ -2532,8 +2809,6 @@ function AjustesScreen({ dark, onToggleDark, onLogout, userEmail }) {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Ajustes</Text>
-
         <Text style={styles.sectionTitle}>Apariencia</Text>
         <TouchableOpacity
           style={styles.settingRow}
@@ -2564,6 +2839,375 @@ function AjustesScreen({ dark, onToggleDark, onLogout, userEmail }) {
         </TouchableOpacity>
 
         {status ? <Text style={styles.statusText}>{status}</Text> : null}
+      </View>
+    </ScrollView>
+  );
+}
+
+function RadarChart({ data }) {
+  const n = data.length;
+  if (n === 0) return null;
+  const cx = 50;
+  const cy = 50;
+  const radius = 38;
+  const labelRadius = 48;
+
+  const angleFor = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+
+  const pointFor = (value, i) => {
+    const a = angleFor(i);
+    const r = radius * (value / 100);
+    return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+  };
+
+  const ringPolygon = (fraction) =>
+    data
+      .map((_, i) => {
+        const a = angleFor(i);
+        const r = radius * fraction;
+        return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+      })
+      .join(' ');
+
+  const curPoints = data.map((d, i) => pointFor(d.cur, i)).join(' ');
+  const prevPoints = data.map((d, i) => pointFor(d.prev, i)).join(' ');
+
+  return (
+    <Svg width="100%" height="100%" viewBox="-12 -12 124 124">
+      <G>
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <Polygon
+            key={f}
+            points={ringPolygon(f)}
+            fill="none"
+            stroke={colors.border}
+            strokeWidth={0.4}
+          />
+        ))}
+        {data.map((_, i) => {
+          const a = angleFor(i);
+          return (
+            <Line
+              key={`axis-${i}`}
+              x1={cx}
+              y1={cy}
+              x2={cx + radius * Math.cos(a)}
+              y2={cy + radius * Math.sin(a)}
+              stroke={colors.border}
+              strokeWidth={0.4}
+            />
+          );
+        })}
+        <Polygon
+          points={prevPoints}
+          fill={colors.ready}
+          fillOpacity={0.22}
+          stroke={colors.ready}
+          strokeWidth={1.4}
+          strokeLinejoin="round"
+        />
+        <Polygon
+          points={curPoints}
+          fill={colors.accent}
+          fillOpacity={0.3}
+          stroke={colors.accent}
+          strokeWidth={1.6}
+          strokeLinejoin="round"
+        />
+        {data.map((d, i) => {
+          const a = angleFor(i);
+          const r = radius * (d.cur / 100);
+          return (
+            <Circle
+              key={`dot-${d.group}`}
+              cx={cx + r * Math.cos(a)}
+              cy={cy + r * Math.sin(a)}
+              r={1.1}
+              fill={colors.accent}
+            />
+          );
+        })}
+        {data.map((d, i) => {
+          const a = angleFor(i);
+          const x = cx + labelRadius * Math.cos(a);
+          const y = cy + labelRadius * Math.sin(a);
+          const cos = Math.cos(a);
+          const sin = Math.sin(a);
+          let anchor = 'middle';
+          if (cos < -0.25) anchor = 'end';
+          else if (cos > 0.25) anchor = 'start';
+          let dy = 1.8;
+          if (sin < -0.85) dy = 5;
+          else if (sin > 0.85) dy = -1;
+          return (
+            <SvgText
+              key={`label-${d.group}`}
+              x={x}
+              y={y}
+              textAnchor={anchor}
+              dy={dy}
+              fontSize={5}
+              fontWeight="600"
+              fill={colors.muted}
+            >
+              {d.group}
+            </SvgText>
+          );
+        })}
+      </G>
+    </Svg>
+  );
+}
+
+function PerfilScreen({ user, active, onLogout }) {
+  const meta = user?.user_metadata || {};
+  const fullName = meta.full_name || '';
+  const first = meta.first_name || '';
+  const last = meta.last_name || '';
+  const displayName = fullName || [first, last].filter(Boolean).join(' ').trim() || '—';
+  const email = user?.email || '';
+  const country = meta.country || '';
+  const isGoogle =
+    user?.app_metadata?.provider === 'google' ||
+    (Array.isArray(user?.identities) && user.identities.some((i) => i?.provider === 'google'));
+  const providerLabel = isGoogle ? 'Cuenta de Google' : 'Email y contraseña';
+
+  const [hiitTotal, setHiitTotal] = useState(0);
+  const [hiitWeek, setHiitWeek] = useState(0);
+  const [radar, setRadar] = useState([]);
+  const [hasData, setHasData] = useState(false);
+
+  const [editing, setEditing] = useState(false);
+  const [editFirst, setEditFirst] = useState(first);
+  const [editLast, setEditLast] = useState(last);
+  const [nameStatus, setNameStatus] = useState('');
+  const [nameError, setNameError] = useState('');
+
+  useEffect(() => {
+    if (!active) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(HIIT_LOG_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        const log = Array.isArray(parsed) ? parsed.filter((t) => Number.isFinite(t)) : [];
+        const now = Date.now();
+        const weekStart = startOfWeek(now);
+        const weekEnd = weekStart + 7 * 24 * 60 * 60 * 1000;
+        if (mounted) {
+          setHiitTotal(log.length);
+          setHiitWeek(log.filter((t) => t >= weekStart && t < weekEnd).length);
+        }
+      } catch (_) {}
+
+      try {
+        const raw = await AsyncStorage.getItem(PROGRESION_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const arr = Array.isArray(parsed?.exercises)
+          ? parsed.exercises.map((ex) => normalizeExercise(ex))
+          : [];
+        const now = Date.now();
+        const curStart = startOfWeek(now);
+        const prevStart = curStart - 7 * 24 * 60 * 60 * 1000;
+        const curEnd = curStart + 7 * 24 * 60 * 60 * 1000;
+
+        const byMuscle = {};
+        for (const ex of arr) {
+          const muscle = MUSCLE_GROUPS.includes(ex.muscle) ? ex.muscle : 'Pecho';
+          const sessions = ex.sessions || [];
+          for (const s of sessions) {
+            const ts = Number(s?.ts);
+            if (!Number.isFinite(ts)) continue;
+            const e = bestE1RM(s);
+            if (e <= 0) continue;
+            const isCur = ts >= curStart && ts < curEnd;
+            const isPrev = ts >= prevStart && ts < curStart;
+            if (!isCur && !isPrev) continue;
+            if (!byMuscle[muscle]) byMuscle[muscle] = { cur: 0, prev: 0 };
+            if (isCur) byMuscle[muscle].cur = Math.max(byMuscle[muscle].cur, e);
+            if (isPrev) byMuscle[muscle].prev = Math.max(byMuscle[muscle].prev, e);
+          }
+        }
+        const data = MUSCLE_GROUPS.filter(
+          (m) => byMuscle[m] && (byMuscle[m].cur > 0 || byMuscle[m].prev > 0),
+        ).map((m) => {
+          const { cur, prev } = byMuscle[m];
+          const maxVal = Math.max(cur, prev);
+          return {
+            group: m,
+            cur: maxVal > 0 ? Math.round((cur / maxVal) * 100) : 0,
+            prev: maxVal > 0 ? Math.round((prev / maxVal) * 100) : 0,
+            maxVal,
+          };
+        });
+        if (mounted) {
+          setRadar(data);
+          setHasData(data.length > 0);
+        }
+      } catch (_) {}
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [active]);
+
+  function startEdit() {
+    setEditFirst(first);
+    setEditLast(last);
+    setNameStatus('');
+    setNameError('');
+    setEditing(true);
+  }
+
+  async function saveName() {
+    const f = editFirst.trim();
+    const l = editLast.trim();
+    if (!f || !l) {
+      setNameError('Ingresá nombre y apellido.');
+      setNameStatus('error');
+      return;
+    }
+    setNameStatus('saving');
+    setNameError('');
+    try {
+      const { error: err } = await supabase.auth.updateUser({
+        data: { first_name: f, last_name: l },
+      });
+      if (err) {
+        setNameError(mapAuthError(err));
+        setNameStatus('error');
+        return;
+      }
+      setNameStatus('saved');
+      setEditing(false);
+    } catch (_) {
+      setNameError(GENERIC_AUTH_ERROR);
+      setNameStatus('error');
+    }
+  }
+
+  async function logout() {
+    try {
+      await onLogout();
+    } catch (_) {}
+  }
+
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>Cuenta</Text>
+
+        <View style={styles.profileField}>
+          <Text style={styles.profileFieldLabel}>Nombre</Text>
+          <Text style={styles.profileFieldValue}>{displayName}</Text>
+        </View>
+
+        <View style={styles.profileField}>
+          <Text style={styles.profileFieldLabel}>Correo</Text>
+          <Text style={styles.profileFieldValue}>{email || '—'}</Text>
+        </View>
+
+        <View style={styles.profileField}>
+          <Text style={styles.profileFieldLabel}>País</Text>
+          <Text style={styles.profileFieldValue}>{country || '—'}</Text>
+        </View>
+
+        <View style={styles.profileField}>
+          <Text style={styles.profileFieldLabel}>Proveedor</Text>
+          <Text style={styles.profileFieldValue}>{providerLabel}</Text>
+        </View>
+
+        {editing ? (
+          <View style={styles.profileEditPanel}>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Nombre</Text>
+              <TextInput
+                style={styles.input}
+                value={editFirst}
+                onChangeText={setEditFirst}
+                placeholder="Tu nombre"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Apellido</Text>
+              <TextInput
+                style={styles.input}
+                value={editLast}
+                onChangeText={setEditLast}
+                placeholder="Tu apellido"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="words"
+              />
+            </View>
+            {nameError ? <Text style={styles.error}>{nameError}</Text> : null}
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[styles.btn, styles.modalGhost]}
+                onPress={() => setEditing(false)}
+              >
+                <Text style={styles.btnGhostText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnPrimary, styles.modalPrimary, nameStatus === 'saving' && styles.btnDisabled]}
+                onPress={saveName}
+                disabled={nameStatus === 'saving'}
+              >
+                <Text style={styles.btnPrimaryText}>
+                  {nameStatus === 'saving' ? 'Guardando...' : 'Guardar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity style={[styles.btn, styles.profileEditBtn]} onPress={startEdit}>
+            <Text style={styles.btnText}>Editar nombre</Text>
+          </TouchableOpacity>
+        )}
+
+        {nameStatus === 'saved' ? (
+          <Text style={[styles.authSuccessText, styles.topGap]}>Nombre actualizado.</Text>
+        ) : null}
+
+        <TouchableOpacity style={[styles.btn, styles.logoutBtn]} onPress={logout}>
+          <Text style={styles.logoutBtnText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.sectionTitle, styles.topGap]}>Radar semanal por grupo muscular</Text>
+        {hasData ? (
+          <>
+            <View style={styles.radarWrap}>
+              <RadarChart data={radar} />
+            </View>
+            <View style={styles.legendRow}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
+                <Text style={styles.legendText}>Esta semana</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: colors.ready }]} />
+                <Text style={styles.legendText}>Semana anterior</Text>
+              </View>
+            </View>
+          </>
+        ) : (
+          <Text style={styles.notesEmpty}>
+            Completá sesiones de Progresión para ver tu radar semanal.
+          </Text>
+        )}
+
+        <Text style={[styles.sectionTitle, styles.topGap]}>Sesiones HIIT</Text>
+        <View style={styles.statRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{hiitTotal}</Text>
+            <Text style={styles.statLabel}>Sesiones HIIT totales</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{hiitWeek}</Text>
+            <Text style={styles.statLabel}>Esta semana</Text>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
@@ -2721,8 +3365,47 @@ function makeStyles() {
     paddingTop: Platform.OS === 'web' ? 24 : 60,
     paddingBottom: 16,
   },
-  header: {
+  auroraBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+  },
+  auroraBase: {
+    width: '100%',
+    maxWidth: 480,
+    flex: 1,
+    overflow: 'hidden',
+  },
+  auroraBlob: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  auroraGlow: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  headerShadow: {
     marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  header: {
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glass,
+    overflow: 'hidden',
+  },
+  headerBlur: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
   },
   title: {
     fontSize: 26,
@@ -2734,19 +3417,31 @@ function makeStyles() {
     color: colors.muted,
     marginTop: 2,
   },
+  tabBarShadow: {
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: colors.panel,
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 12,
+    backgroundColor: colors.glass,
+    borderRadius: 18,
+    padding: 5,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.glassBorder,
+    overflow: 'hidden',
+  },
+  tabBarBlur: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
   },
   tab: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 9,
+    borderRadius: 13,
     alignItems: 'center',
   },
   tabActive: {
@@ -2770,11 +3465,16 @@ function makeStyles() {
     paddingBottom: 24,
   },
   panel: {
-    backgroundColor: colors.panel,
-    borderRadius: 16,
+    backgroundColor: colors.glass,
+    borderRadius: 22,
     padding: 20,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.glassBorder,
+    shadowColor: '#000000',
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   panelTitle: {
     fontSize: 20,
@@ -2792,10 +3492,10 @@ function makeStyles() {
     marginBottom: 6,
   },
   input: {
-    backgroundColor: colors.bg,
+    backgroundColor: colors.glassInput,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
+    borderColor: colors.glassBorder,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
@@ -2824,10 +3524,10 @@ function makeStyles() {
   soundChip: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassInput,
     alignItems: 'center',
   },
   soundChipActive: {
@@ -2846,8 +3546,13 @@ function makeStyles() {
     backgroundColor: colors.accent,
     paddingVertical: 12,
     paddingHorizontal: 18,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
+    shadowColor: colors.accent,
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   btnPrimaryText: {
     color: colors.onAccent,
@@ -2855,12 +3560,12 @@ function makeStyles() {
     fontWeight: '700',
   },
   btn: {
-    backgroundColor: colors.panel,
+    backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.glassBorder,
     paddingVertical: 12,
     paddingHorizontal: 18,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
   },
   btnText: {
@@ -2946,7 +3651,7 @@ function makeStyles() {
   },
   notesHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     marginBottom: 16,
   },
@@ -2957,11 +3662,16 @@ function makeStyles() {
   },
   noteCard: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
+    borderColor: colors.glassBorder,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 12,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.glassCard,
+    shadowColor: '#000000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
   noteTitle: {
     fontSize: 16,
@@ -2988,11 +3698,11 @@ function makeStyles() {
   },
   formPanel: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
+    borderColor: colors.glassBorder,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 16,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.glassCard,
   },
   sectionTitle: {
     fontSize: 15,
@@ -3008,10 +3718,10 @@ function makeStyles() {
   goalChip: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassInput,
     alignItems: 'center',
   },
   goalChipActive: {
@@ -3089,12 +3799,12 @@ function makeStyles() {
     fontWeight: '600',
   },
   sugBox: {
-    backgroundColor: colors.bg,
-    borderRadius: 10,
+    backgroundColor: colors.glassInput,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.glassBorder,
   },
   sugLine: {
     fontSize: 15,
@@ -3115,10 +3825,10 @@ function makeStyles() {
   rirChip: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassInput,
     alignItems: 'center',
   },
   rirChipActive: {
@@ -3216,11 +3926,11 @@ function makeStyles() {
   },
   glossaryCard: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
+    borderColor: colors.glassBorder,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 10,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.glassCard,
   },
   glossaryTitle: {
     fontSize: 15,
@@ -3280,10 +3990,10 @@ function makeStyles() {
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassCard,
   },
   settingTextWrap: {
     flex: 1,
@@ -3330,11 +4040,16 @@ function makeStyles() {
   modalCard: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: colors.panel,
-    borderRadius: 16,
+    backgroundColor: colors.glass,
+    borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.glassBorder,
+    shadowColor: '#000000',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 18,
@@ -3463,11 +4178,16 @@ function makeStyles() {
     maxWidth: 420,
     marginTop: 'auto',
     marginBottom: 'auto',
-    backgroundColor: colors.panel,
-    borderRadius: 16,
+    backgroundColor: colors.glass,
+    borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.glassBorder,
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   authBrand: {
     fontSize: 22,
@@ -3553,12 +4273,12 @@ function makeStyles() {
     color: colors.muted,
   },
   btnGoogle: {
-    backgroundColor: colors.panel,
+    backgroundColor: colors.glass,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.glassBorder,
     paddingVertical: 12,
     paddingHorizontal: 18,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -3608,6 +4328,99 @@ function makeStyles() {
     color: colors.danger,
     fontSize: 15,
     fontWeight: '700',
+  },
+  muscleBadge: {
+    backgroundColor: colors.softBg,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.softBorder,
+  },
+  muscleBadgeText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  profileField: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  profileFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.muted,
+    marginBottom: 2,
+  },
+  profileFieldValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  profileEditPanel: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassCard,
+  },
+  profileEditBtn: {
+    marginTop: 12,
+  },
+  radarWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    maxWidth: 320,
+    alignSelf: 'center',
+    marginTop: 8,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 18,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendText: {
+    fontSize: 13,
+    color: colors.muted,
+  },
+  statRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  statCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassCard,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 4,
+    textAlign: 'center',
   },
   });
 }
