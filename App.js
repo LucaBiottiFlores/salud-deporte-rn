@@ -36,6 +36,9 @@ const REP_RANGE_PRESETS = {
   hipertrofia: ['6-10', '8-12', '10-15'],
 };
 
+// Rangos de tiempo (segundos) para ejercicios isométricos.
+const ISO_TIME_PRESETS = ['10-20', '20-30', '30-45', '45-60'];
+
 const MUSCLE_GROUPS = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Antebrazos', 'Piernas', 'Core'];
 
 const LIGHT_COLORS = {
@@ -193,12 +196,16 @@ function round1(x) {
 }
 
 function epley(weight, reps) {
+  if (!Number.isFinite(Number(weight)) || !Number.isFinite(Number(reps))) return 0;
   return round1(weight * (1 + reps / 30));
 }
 
 function bestE1RM(session) {
   if (!session || !Array.isArray(session.sets) || session.sets.length === 0) return 0;
-  return Math.max(...session.sets.map((s) => epley(s.weight, s.reps)));
+  const vals = session.sets
+    .filter((s) => s && Number.isFinite(Number(s.weight)) && Number.isFinite(Number(s.reps)))
+    .map((s) => epley(Number(s.weight), Number(s.reps)));
+  return vals.length > 0 ? Math.max(...vals) : 0;
 }
 
 function firstSetWeight(session) {
@@ -303,7 +310,104 @@ function blockInfo(ex) {
   return { sessionsInBlock, deloadSuggested: sessionsInBlock >= DELOAD_AFTER };
 }
 
+function isoBestTime(session) {
+  if (!session || !Array.isArray(session.sets) || session.sets.length === 0) return 0;
+  return Math.max(...session.sets.map((s) => (Number.isFinite(Number(s?.time)) ? Number(s.time) : 0)));
+}
+
+function isoWorkingWeight(session, timeMin) {
+  if (!session || !Array.isArray(session.sets) || session.sets.length === 0) return 0;
+  const min = Number.isFinite(Number(timeMin)) ? Number(timeMin) : 1;
+  const inRange = session.sets.filter(
+    (s) => s && Number.isFinite(Number(s.weight)) && Number.isFinite(Number(s.time)) && Number(s.time) >= min,
+  );
+  const pool = inRange.length > 0
+    ? inRange
+    : session.sets.filter((s) => s && Number.isFinite(Number(s.weight)));
+  if (pool.length === 0) return 0;
+  const counts = {};
+  pool.forEach((s) => {
+    const w = Number(s.weight);
+    counts[w] = (counts[w] || 0) + 1;
+  });
+  const maxCount = Math.max(...Object.values(counts));
+  return Math.max(...Object.keys(counts).filter((w) => counts[w] === maxCount).map(Number));
+}
+
+function isoStalled(ex) {
+  const sessions = ex.sessions || [];
+  if (sessions.length < 4) return false;
+  const last = sessions[sessions.length - 1];
+  const ref = sessions[sessions.length - 4];
+  return isoBestTime(last) <= isoBestTime(ref) && firstSetWeight(last) <= firstSetWeight(ref);
+}
+
+function isoSuggestionFor(ex, ignoreDeload = false) {
+  const sessions = ex.sessions || [];
+  const timeMin = Number.isFinite(Number(ex.timeMin)) && Number(ex.timeMin) >= 1 ? Number(ex.timeMin) : 20;
+  const timeMax = Number.isFinite(Number(ex.timeMax)) && Number(ex.timeMax) >= timeMin ? Number(ex.timeMax) : Math.max(timeMin, 40);
+  const timeInc = Number.isFinite(Number(ex.timeIncrement)) && Number(ex.timeIncrement) > 0 ? Number(ex.timeIncrement) : 5;
+
+  if (sessions.length === 0) {
+    return {
+      weight: null,
+      time: timeMin,
+      reason: `Primera sesión: elige un peso y mantén la posición ${timeMin}s.`,
+      kind: 'start',
+    };
+  }
+
+  const last = sessions[sessions.length - 1];
+  const validSets = (last?.sets || []).filter(
+    (s) => s && Number.isFinite(Number(s.weight)) && Number.isFinite(Number(s.time)),
+  );
+  if (validSets.length === 0) {
+    return {
+      weight: null,
+      time: timeMin,
+      reason: 'Registra una serie con tiempo para ver la siguiente sugerencia.',
+      kind: 'start',
+    };
+  }
+
+  const lastWeight = isoWorkingWeight(last, timeMin);
+  const workSets = validSets.filter((s) => Number(s.weight) === lastWeight);
+  const workTimes = workSets.map((s) => Number(s.time));
+  const maxTime = workTimes.length > 0 ? Math.max(...workTimes) : 0;
+
+  const justDeloaded =
+    sessions.length >= 2 && lastWeight <= isoWorkingWeight(sessions[sessions.length - 2], timeMin) * 0.9;
+
+  if (!ignoreDeload && isoStalled(ex) && !justDeloaded) {
+    return {
+      weight: round1(lastWeight),
+      time: round1(timeMax * 0.9),
+      reason: 'Posible estancamiento: descarga el tiempo de trabajo (~90%) y reconstruye.',
+      kind: 'deload',
+    };
+  }
+
+  const hitTop = workSets.length > 0 && workSets.every((s) => Number(s.time) >= timeMax);
+  if (hitTop) {
+    return {
+      weight: round1(lastWeight),
+      time: round1(timeMax + timeInc),
+      reason: `Llegaste al tope de tiempo (${timeMax}s): aumenta la duración de la contracción.`,
+      kind: 'add_time',
+    };
+  }
+
+  const nextTime = Math.min((maxTime > 0 ? maxTime : timeMin) + timeInc, timeMax);
+  return {
+    weight: round1(lastWeight),
+    time: round1(nextTime),
+    reason: 'Mantén el peso y aumenta el tiempo de trabajo.',
+    kind: 'add_time',
+  };
+}
+
 function suggestionFor(ex, ignoreDeload = false) {
+  if (ex.isometric) return isoSuggestionFor(ex, ignoreDeload);
   const sessions = ex.sessions || [];
   if (sessions.length === 0) {
     return {
@@ -399,6 +503,7 @@ function suggestionFor(ex, ignoreDeload = false) {
 }
 
 function normalizeExercise(ex) {
+  const isometric = ex?.isometric === true;
   const repMin = Number.isFinite(Number(ex?.repMin)) && Number(ex.repMin) >= 1
     ? Math.floor(Number(ex.repMin))
     : 3;
@@ -408,17 +513,39 @@ function normalizeExercise(ex) {
   const incrementKg = Number.isFinite(Number(ex?.incrementKg)) && Number(ex.incrementKg) > 0
     ? round1(Number(ex.incrementKg))
     : 2.5;
+  const timeMin = Number.isFinite(Number(ex?.timeMin)) && Number(ex.timeMin) >= 1
+    ? Math.floor(Number(ex.timeMin))
+    : 20;
+  const timeMax = Number.isFinite(Number(ex?.timeMax)) && Number(ex.timeMax) >= timeMin
+    ? Math.floor(Number(ex.timeMax))
+    : Math.max(timeMin, 40);
+  const timeIncrement = Number.isFinite(Number(ex?.timeIncrement)) && Number(ex.timeIncrement) > 0
+    ? round1(Number(ex.timeIncrement))
+    : 5;
   const sessions = Array.isArray(ex?.sessions)
     ? ex.sessions.map((s) => ({
         ts: Number(s?.ts) || Date.now(),
         sets: Array.isArray(s?.sets)
           ? s.sets
-              .filter((st) => st && Number.isFinite(Number(st.weight)) && Number.isFinite(Number(st.reps)))
-              .map((st) => ({ weight: round1(Number(st.weight)), reps: Math.floor(Number(st.reps)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 }))
+              .filter((st) => st && Number.isFinite(Number(st.weight)) && (isometric ? Number.isFinite(Number(st.time)) : Number.isFinite(Number(st.reps))))
+              .map((st) => isometric
+                ? { weight: round1(Number(st.weight)), time: Math.floor(Number(st.time)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 }
+                : { weight: round1(Number(st.weight)), reps: Math.floor(Number(st.reps)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 })
           : [],
       }))
     : [];
-  return { ...ex, repMin, repMax, incrementKg, muscle: MUSCLE_GROUPS.includes(ex?.muscle) ? ex.muscle : 'Pecho', sessions };
+  return {
+    ...ex,
+    isometric,
+    repMin,
+    repMax,
+    incrementKg,
+    timeMin,
+    timeMax,
+    timeIncrement,
+    muscle: MUSCLE_GROUPS.includes(ex?.muscle) ? ex.muscle : 'Pecho',
+    sessions,
+  };
 }
 
 function parseRepRange(str) {
@@ -1363,7 +1490,9 @@ function TabButton({ label, active, onPress }) {
       activeOpacity={1}
     >
       <Animated.View style={{ transform: [{ scale }] }}>
-        <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+        <Text style={[styles.tabText, active && styles.tabTextActive]} numberOfLines={1}>
+          {label}
+        </Text>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -2079,6 +2208,9 @@ function ProgresionScreen() {
   const [formMuscle, setFormMuscle] = useState('Pecho');
   const [formRepRange, setFormRepRange] = useState('3-5');
   const [formIncrement, setFormIncrement] = useState('2.5');
+  const [formIsometric, setFormIsometric] = useState(false);
+  const [formTimeRange, setFormTimeRange] = useState('20-30');
+  const [formTimeIncrement, setFormTimeIncrement] = useState('5');
   const [formError, setFormError] = useState('');
   const [deloadOffer, setDeloadOffer] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -2114,23 +2246,28 @@ function ProgresionScreen() {
 
   function updateDraft(id, patch) {
     setDrafts((prev) => {
-      const cur = prev[id] || { weight: '', reps: '', rir: 2, sets: [] };
+      const cur = prev[id] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
       return { ...prev, [id]: { ...cur, ...patch } };
     });
   }
 
   function draftOf(id) {
-    return drafts[id] || { weight: '', reps: '', rir: 2, sets: [] };
+    return drafts[id] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
   }
 
   function seedDraft(ex) {
     const sug = suggestionFor(ex, true);
-    return {
+    const draft = {
       weight: sug.weight !== null ? String(sug.weight) : '',
-      reps: String(sug.reps),
       rir: 2,
       sets: [],
     };
+    if (ex.isometric) {
+      draft.time = sug.time !== undefined ? String(sug.time) : '';
+    } else {
+      draft.reps = String(sug.reps);
+    }
+    return draft;
   }
 
   function resetForm() {
@@ -2139,6 +2276,9 @@ function ProgresionScreen() {
     setFormMuscle('Pecho');
     setFormRepRange('3-5');
     setFormIncrement('2.5');
+    setFormIsometric(false);
+    setFormTimeRange('20-30');
+    setFormTimeIncrement('5');
     setFormError('');
     setShowForm(false);
   }
@@ -2150,27 +2290,50 @@ function ProgresionScreen() {
 
   function saveExercise() {
     const name = formName.trim();
-    const range = parseRepRange(formRepRange);
-    const inc = Number(formIncrement);
     if (!name) {
       setFormError('Ingresa un nombre para el ejercicio.');
       return;
     }
-    if (!range) {
-      setFormError('El rango de reps debe ser como "8-12" (mínimo-máximo).');
-      return;
+
+    let ex;
+    if (formIsometric) {
+      const timeRange = parseRepRange(formTimeRange);
+      if (!timeRange) {
+        setFormError('El rango de tiempo debe ser como "20-30" (mínimo-máximo en segundos).');
+        return;
+      }
+      const timeInc = Number(formTimeIncrement);
+      ex = {
+        id: makeId(),
+        name,
+        goal: formGoal,
+        muscle: formMuscle,
+        isometric: true,
+        timeMin: timeRange.min,
+        timeMax: timeRange.max,
+        timeIncrement: Number.isFinite(timeInc) && timeInc > 0 ? round1(timeInc) : 5,
+        sessions: [],
+      };
+    } else {
+      const range = parseRepRange(formRepRange);
+      const inc = Number(formIncrement);
+      if (!range) {
+        setFormError('El rango de reps debe ser como "8-12" (mínimo-máximo).');
+        return;
+      }
+      ex = {
+        id: makeId(),
+        name,
+        goal: formGoal,
+        muscle: formMuscle,
+        isometric: false,
+        repMin: range.min,
+        repMax: range.max,
+        incrementKg: Number.isFinite(inc) && inc > 0 ? round1(inc) : 2.5,
+        sessions: [],
+      };
     }
-    const incrementKg = Number.isFinite(inc) && inc > 0 ? round1(inc) : 2.5;
-    const ex = {
-      id: makeId(),
-      name,
-      goal: formGoal,
-      muscle: formMuscle,
-      repMin: range.min,
-      repMax: range.max,
-      incrementKg,
-      sessions: [],
-    };
+
     setExercises((prev) => {
       const next = [...prev, ex];
       persistExercises(next);
@@ -2178,7 +2341,7 @@ function ProgresionScreen() {
     });
     setDrafts((prev) => ({ ...prev, [ex.id]: seedDraft(ex) }));
     resetForm();
-    if (!noAskCalibration) {
+    if (!noAskCalibration && !ex.isometric) {
       setCalibrationOffer({ exerciseId: ex.id, goal: ex.goal, repMin: ex.repMin, repMax: ex.repMax, incrementKg: ex.incrementKg });
     }
   }
@@ -2187,7 +2350,7 @@ function ProgresionScreen() {
     if (!calibrationOffer) return;
     const { exerciseId } = calibrationOffer;
     setDrafts((prev) => {
-      const cur = prev[exerciseId] || { weight: '', reps: '', rir: 2, sets: [] };
+      const cur = prev[exerciseId] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
       return { ...prev, [exerciseId]: { ...cur, weight: String(weight), reps: String(reps) } };
     });
     setCalibrationOffer(null);
@@ -2216,29 +2379,42 @@ function ProgresionScreen() {
   function addSet(ex) {
     const d = draftOf(ex.id);
     const weight = parseFloat(d.weight);
-    const reps = parseInt(d.reps, 10);
     const rir = d.rir;
     if (!Number.isFinite(weight) || weight <= 0) {
       updateDraft(ex.id, { error: 'Ingresa un peso válido (kg).' });
       return;
     }
-    if (!Number.isFinite(reps) || reps < 1) {
-      updateDraft(ex.id, { error: 'Ingresa una cantidad de reps válida.' });
-      return;
+    let set;
+    let clearField;
+    if (ex.isometric) {
+      const time = parseInt(d.time, 10);
+      if (!Number.isFinite(time) || time < 1) {
+        updateDraft(ex.id, { error: 'Ingresa un tiempo de trabajo válido (segundos).' });
+        return;
+      }
+      set = { weight: round1(weight), time, rir };
+      clearField = { time: '' };
+    } else {
+      const reps = parseInt(d.reps, 10);
+      if (!Number.isFinite(reps) || reps < 1) {
+        updateDraft(ex.id, { error: 'Ingresa una cantidad de reps válida.' });
+        return;
+      }
+      set = { weight: round1(weight), reps, rir };
+      clearField = { reps: '' };
     }
-    const set = { weight: round1(weight), reps, rir };
     setDrafts((prev) => {
-      const cur = prev[ex.id] || { weight: '', reps: '', rir: 2, sets: [] };
+      const cur = prev[ex.id] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
       return {
         ...prev,
-        [ex.id]: { ...cur, weight: String(set.weight), reps: '', rir, sets: [...cur.sets, set], error: '' },
+        [ex.id]: { ...cur, weight: String(set.weight), ...clearField, rir, sets: [...cur.sets, set], error: '' },
       };
     });
   }
 
   function removeSet(exId, index) {
     setDrafts((prev) => {
-      const cur = prev[exId] || { weight: '', reps: '', rir: 2, sets: [] };
+      const cur = prev[exId] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
       return { ...prev, [exId]: { ...cur, sets: cur.sets.filter((_, i) => i !== index) } };
     });
   }
@@ -2257,16 +2433,24 @@ function ProgresionScreen() {
 
     const nextSug = suggestionFor(updatedEx);
     if (nextSug.kind === 'deload') {
-      setDeloadOffer({ exerciseId: ex.id, weight: nextSug.weight, reps: nextSug.reps });
+      setDeloadOffer({
+        exerciseId: ex.id,
+        weight: nextSug.weight,
+        value: updatedEx.isometric ? nextSug.time : nextSug.reps,
+        isometric: updatedEx.isometric,
+      });
     }
   }
 
   function acceptDeload() {
     if (!deloadOffer) return;
-    const { exerciseId, weight, reps } = deloadOffer;
+    const { exerciseId, weight, value, isometric } = deloadOffer;
     setDrafts((prev) => {
-      const cur = prev[exerciseId] || { weight: '', reps: '', rir: 2, sets: [] };
-      return { ...prev, [exerciseId]: { ...cur, weight: String(weight), reps: String(reps) } };
+      const cur = prev[exerciseId] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
+      const patch = isometric
+        ? { weight: String(weight), time: String(value) }
+        : { weight: String(weight), reps: String(value) };
+      return { ...prev, [exerciseId]: { ...cur, ...patch } };
     });
     setDeloadOffer(null);
   }
@@ -2337,7 +2521,7 @@ function ProgresionScreen() {
                 {MUSCLE_GROUPS.map((muscle) => (
                   <TouchableOpacity
                     key={muscle}
-                    style={[styles.goalChip, formMuscle === muscle && styles.goalChipActive]}
+                    style={[styles.muscleChip, formMuscle === muscle && styles.goalChipActive]}
                     onPress={() => setFormMuscle(muscle)}
                   >
                     <Text
@@ -2354,44 +2538,116 @@ function ProgresionScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Rango de reps</Text>
+              <Text style={styles.fieldLabel}>Tipo de ejercicio</Text>
               <View style={styles.chipRow}>
-                {(REP_RANGE_PRESETS[formGoal] || []).map((range) => (
+                {[
+                  { key: false, label: 'Con reps' },
+                  { key: true, label: 'Isométrico' },
+                ].map((opt) => (
                   <TouchableOpacity
-                    key={range}
-                    style={[styles.goalChip, formRepRange === range && styles.goalChipActive]}
-                    onPress={() => setFormRepRange(range)}
+                    key={String(opt.key)}
+                    style={[styles.goalChip, formIsometric === opt.key && styles.goalChipActive]}
+                    onPress={() => setFormIsometric(opt.key)}
                   >
                     <Text
                       style={[
                         styles.goalChipText,
-                        formRepRange === range && styles.goalChipTextActive,
+                        formIsometric === opt.key && styles.goalChipTextActive,
                       ]}
                     >
-                      {range}
+                      {opt.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
               <Text style={styles.fieldHint}>
-                {formGoal === 'fuerza'
-                  ? 'Fuerza: 1-6 reps por serie.'
-                  : 'Hipertrofia: 6-15 reps por serie.'} Opciones fijas con límite sano.
+                {formIsometric
+                  ? 'Isométrico: mantienes una posición fija y registras el tiempo de trabajo.'
+                  : 'Con reps: registras repeticiones por serie.'}
               </Text>
             </View>
 
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Subida de carga (kg)</Text>
-              <TextInput
-                style={styles.input}
-                value={formIncrement}
-                onChangeText={(t) => setFormIncrement(t.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-                placeholder="2.5"
-                placeholderTextColor="#9ca3af"
-              />
-              <Text style={styles.fieldHint}>Kg que sumas al completar el tope del rango de reps.</Text>
-            </View>
+            {formIsometric ? (
+              <>
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Tiempo de trabajo (seg)</Text>
+                  <View style={styles.chipRow}>
+                    {ISO_TIME_PRESETS.map((range) => (
+                      <TouchableOpacity
+                        key={range}
+                        style={[styles.goalChip, formTimeRange === range && styles.goalChipActive]}
+                        onPress={() => setFormTimeRange(range)}
+                      >
+                        <Text
+                          style={[
+                            styles.goalChipText,
+                            formTimeRange === range && styles.goalChipTextActive,
+                          ]}
+                        >
+                          {range}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.fieldHint}>Tiempo objetivo de contracción por serie (segundos).</Text>
+                </View>
+
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Subida de tiempo (seg)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formTimeIncrement}
+                    onChangeText={(t) => setFormTimeIncrement(t.replace(/\D/g, ''))}
+                    keyboardType="number-pad"
+                    placeholder="5"
+                    placeholderTextColor="#9ca3af"
+                  />
+                  <Text style={styles.fieldHint}>Segundos que sumas al llegar al tope de tiempo.</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Rango de reps</Text>
+                  <View style={styles.chipRow}>
+                    {(REP_RANGE_PRESETS[formGoal] || []).map((range) => (
+                      <TouchableOpacity
+                        key={range}
+                        style={[styles.goalChip, formRepRange === range && styles.goalChipActive]}
+                        onPress={() => setFormRepRange(range)}
+                      >
+                        <Text
+                          style={[
+                            styles.goalChipText,
+                            formRepRange === range && styles.goalChipTextActive,
+                          ]}
+                        >
+                          {range}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.fieldHint}>
+                    {formGoal === 'fuerza'
+                      ? 'Fuerza: 1-6 reps por serie.'
+                      : 'Hipertrofia: 6-15 reps por serie.'} Opciones fijas con límite sano.
+                  </Text>
+                </View>
+
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Subida de carga (kg)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formIncrement}
+                    onChangeText={(t) => setFormIncrement(t.replace(/[^0-9.]/g, ''))}
+                    keyboardType="decimal-pad"
+                    placeholder="2.5"
+                    placeholderTextColor="#9ca3af"
+                  />
+                  <Text style={styles.fieldHint}>Kg que sumas al completar el tope del rango de reps.</Text>
+                </View>
+              </>
+            )}
 
             {formError ? <Text style={styles.error}>{formError}</Text> : null}
 
@@ -2416,7 +2672,7 @@ function ProgresionScreen() {
               onRemoveSet={(index) => removeSet(ex.id, index)}
               onFinish={() => finishSession(ex)}
               onDelete={() => setDeleteTarget(ex.id)}
-              onDeloadInfo={(weight, reps) => setDeloadOffer({ exerciseId: ex.id, weight, reps })}
+              onDeloadInfo={(weight, value, isometric) => setDeloadOffer({ exerciseId: ex.id, weight, value, isometric })}
             />
           ))
         )}
@@ -2433,14 +2689,16 @@ function ProgresionScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>¿Descarga (deload)?</Text>
             <Text style={styles.modalBody}>
-              Tu progreso se estancó. Una semana de descarga (bajar la carga a {deloadOffer?.weight} kg) ayuda a recuperar la fatiga acumulada y volver más fuerte.
+              {deloadOffer?.isometric
+                ? `Tu progreso se estancó. Una semana de descarga (bajar el tiempo a ${deloadOffer?.value}s) ayuda a recuperar la fatiga acumulada y volver más fuerte.`
+                : `Tu progreso se estancó. Una semana de descarga (bajar la carga a ${deloadOffer?.weight} kg) ayuda a recuperar la fatiga acumulada y volver más fuerte.`}
             </Text>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={[styles.btn, styles.modalGhost]} onPress={declineDeload}>
                 <Text style={styles.btnGhostText}>No, continuar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.btnPrimary, styles.modalPrimary]} onPress={acceptDeload}>
-                <Text style={styles.btnPrimaryText}>Sí, ajustar carga</Text>
+                <Text style={styles.btnPrimaryText}>{deloadOffer?.isometric ? 'Sí, ajustar tiempo' : 'Sí, ajustar carga'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2489,13 +2747,15 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
   const [collapsed, setCollapsed] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const sug = suggestionFor(exercise);
+  const iso = exercise.isometric === true;
   const weightVal = draft.weight;
   const repsVal = draft.reps;
+  const timeVal = draft.time;
   const rir = draft.rir;
   const sets = draft.sets || [];
 
   const sessions = exercise.sessions || [];
-  const hasChart = sessions.length >= 2;
+  const hasChart = !iso && sessions.length >= 2;
   const recent = hasChart ? sessions.slice(-6).map((s) => bestE1RM(s)) : [];
   const chartMax = recent.length > 0 ? Math.max(...recent) : 0;
   const fullHistory = sessions.slice().reverse().map((s) => ({
@@ -2516,55 +2776,80 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
   let prs = { e1rm: { v: 0, ts: 0 }, weight: { v: 0, ts: 0 }, volume: { v: 0, ts: 0 } };
   if (sessions.length > 0) {
     const last = sessions[sessions.length - 1];
-    const best = bestE1RM(last);
     const setCount = last.sets.length;
-    const firstReps = last.sets[0]?.reps ?? 0;
     const firstWeight = firstSetWeight(last);
-    const vol = sessionVolume(last);
     const avgRir = lastAvgRir(last);
-    lastSummary = `${setCount}×${firstReps} @ ${firstWeight} kg · e1RM ${best} kg · Vol ${vol} kg${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
-
-    if (sessions.length >= 2) {
-      const prevVol = sessionVolume(sessions[sessions.length - 2]);
-      if (prevVol > 0) {
-        const delta = Math.round(((vol - prevVol) / prevVol) * 100);
-        volumeNote = delta >= 0
-          ? `Volumen +${delta}% vs sesión anterior`
-          : `Volumen ${delta}% vs sesión anterior`;
-      }
-    }
-
-    if (sessions.length >= 2) {
-      const prevBest = Math.max(...sessions.slice(0, -1).map((s) => bestE1RM(s)));
-      isPR = best > prevBest;
-    }
-    if (sessions.length >= 4) {
-      const prev = sessions[sessions.length - 4];
-      isStall = best <= bestE1RM(prev) && firstWeight <= firstSetWeight(prev);
-    }
-
     block = blockInfo(exercise);
-    prs = computePRs(exercise);
 
-    const hitTop = sessionHitTop(last, exercise.repMax);
-    if (sessions.length === 1) {
-      historyNote = 'Primera sesión: ya tienes tu punto de partida.';
-    } else {
-      const prev = sessions[sessions.length - 2];
-      const prevBest = bestE1RM(prev);
-      const prevWeight = firstSetWeight(prev);
-      if (hitTop && firstWeight > prevWeight) {
-        historyNote = `¡Llegaste al tope del rango y subiste la carga a ${firstWeight} kg!`;
-      } else if (best > prevBest) {
-        historyNote = `Nuevo mejor e1RM: de ${prevBest} a ${best} kg.`;
-      } else if (hitTop) {
-        historyNote = 'Completaste el tope del rango: la próxima subes la carga.';
+    if (iso) {
+      const firstTime = last.sets[0]?.time ?? 0;
+      lastSummary = `${setCount}×${firstTime}s @ ${firstWeight} kg${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
+      isStall = isoStalled(exercise);
+      if (sessions.length === 1) {
+        historyNote = 'Primera sesión: ya tienes tu punto de partida.';
       } else {
-        historyNote = 'Sumaste reps sin perder ritmo: vas bien.';
+        const prev = sessions[sessions.length - 2];
+        const prevTime = isoBestTime(prev);
+        const curTime = isoBestTime(last);
+        const prevWeight = firstSetWeight(prev);
+        if (curTime > prevTime && firstWeight >= prevWeight) {
+          historyNote = `Subiste el tiempo de trabajo de ${prevTime}s a ${curTime}s.`;
+        } else if (firstWeight > prevWeight) {
+          historyNote = `Subiste la carga a ${firstWeight} kg.`;
+        } else {
+          historyNote = 'Mantén la carga y sigue sumando tiempo.';
+        }
       }
-    }
-    if (sug.weight !== null) {
-      historyNote += ` Próximo objetivo: ${sug.weight} kg × ${sug.reps} reps.`;
+      if (sug.weight !== null && sug.time !== undefined) {
+        historyNote += ` Próximo objetivo: ${sug.weight} kg × ${sug.time}s.`;
+      }
+    } else {
+      const best = bestE1RM(last);
+      const firstReps = last.sets[0]?.reps ?? 0;
+      const vol = sessionVolume(last);
+      lastSummary = `${setCount}×${firstReps} @ ${firstWeight} kg · e1RM ${best} kg · Vol ${vol} kg${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
+
+      if (sessions.length >= 2) {
+        const prevVol = sessionVolume(sessions[sessions.length - 2]);
+        if (prevVol > 0) {
+          const delta = Math.round(((vol - prevVol) / prevVol) * 100);
+          volumeNote = delta >= 0
+            ? `Volumen +${delta}% vs sesión anterior`
+            : `Volumen ${delta}% vs sesión anterior`;
+        }
+      }
+
+      if (sessions.length >= 2) {
+        const prevBest = Math.max(...sessions.slice(0, -1).map((s) => bestE1RM(s)));
+        isPR = best > prevBest;
+      }
+      if (sessions.length >= 4) {
+        const prev = sessions[sessions.length - 4];
+        isStall = best <= bestE1RM(prev) && firstWeight <= firstSetWeight(prev);
+      }
+
+      prs = computePRs(exercise);
+
+      const hitTop = sessionHitTop(last, exercise.repMax);
+      if (sessions.length === 1) {
+        historyNote = 'Primera sesión: ya tienes tu punto de partida.';
+      } else {
+        const prev = sessions[sessions.length - 2];
+        const prevBest = bestE1RM(prev);
+        const prevWeight = firstSetWeight(prev);
+        if (hitTop && firstWeight > prevWeight) {
+          historyNote = `¡Llegaste al tope del rango y subiste la carga a ${firstWeight} kg!`;
+        } else if (best > prevBest) {
+          historyNote = `Nuevo mejor e1RM: de ${prevBest} a ${best} kg.`;
+        } else if (hitTop) {
+          historyNote = 'Completaste el tope del rango: la próxima subes la carga.';
+        } else {
+          historyNote = 'Sumaste reps sin perder ritmo: vas bien.';
+        }
+      }
+      if (sug.weight !== null) {
+        historyNote += ` Próximo objetivo: ${sug.weight} kg × ${sug.reps} reps.`;
+      }
     }
   }
 
@@ -2582,6 +2867,11 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
             <View style={styles.muscleBadge}>
               <Text style={styles.muscleBadgeText}>{exercise.muscle || 'Pecho'}</Text>
             </View>
+            {iso ? (
+              <View style={styles.muscleBadge}>
+                <Text style={styles.muscleBadgeText}>Isométrico</Text>
+              </View>
+            ) : null}
           </View>
           <Text style={styles.chevron}>{collapsed ? '▸' : '▾'}</Text>
         </TouchableOpacity>
@@ -2595,12 +2885,16 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
       <View style={styles.sugBox}>
         <Text style={styles.sugLine}>
           {sug.weight !== null
-            ? `${sug.weight} kg × ${sug.reps} reps`
-            : `Primera sesión: elige un peso y haz ${exercise.repMin} reps`}
+            ? iso
+              ? `${sug.weight} kg × ${sug.time}s`
+              : `${sug.weight} kg × ${sug.reps} reps`
+            : iso
+              ? `Primera sesión: elige un peso y mantén la posición ${exercise.timeMin}s`
+              : `Primera sesión: elige un peso y haz ${exercise.repMin} reps`}
         </Text>
         <Text style={styles.sugReason}>{sug.reason}</Text>
         {sug.kind === 'deload' ? (
-          <TouchableOpacity style={styles.linkBtn} onPress={() => onDeloadInfo(sug.weight, sug.reps)}>
+          <TouchableOpacity style={styles.linkBtn} onPress={() => onDeloadInfo(sug.weight, iso ? sug.time : sug.reps, iso)}>
             <Text style={styles.linkBtnText}>Ver por qué descargar</Text>
           </TouchableOpacity>
         ) : null}
@@ -2620,11 +2914,11 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           />
         </View>
         <View style={styles.inputCol}>
-          <Text style={styles.inputUnitLabel}>Reps</Text>
+          <Text style={styles.inputUnitLabel}>{iso ? 'Tiempo (seg)' : 'Reps'}</Text>
           <TextInput
             style={styles.input}
-            value={repsVal}
-            onChangeText={(t) => onField({ reps: t.replace(/\D/g, '') })}
+            value={iso ? timeVal : repsVal}
+            onChangeText={(t) => onField(iso ? { time: t.replace(/\D/g, '') } : { reps: t.replace(/\D/g, '') })}
             keyboardType="number-pad"
             placeholder="0"
             placeholderTextColor="#9ca3af"
@@ -2632,8 +2926,12 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
         </View>
       </View>
 
-      <Text style={styles.fieldLabel}>RIR (reps en reserva)</Text>
-      <Text style={styles.fieldHint}>¿Cuántas reps más podías hacer al terminar la serie?</Text>
+      <Text style={styles.fieldLabel}>{iso ? 'RIR (esfuerzo en reserva)' : 'RIR (reps en reserva)'}</Text>
+      <Text style={styles.fieldHint}>
+        {iso
+          ? '¿Cuántos segundos más podías aguantar la posición al terminar?'
+          : '¿Cuántas reps más podías hacer al terminar la serie?'}
+      </Text>
       <View style={styles.rirRow}>
         {RIR_OPTIONS.map((opt) => (
           <TouchableOpacity
@@ -2659,7 +2957,7 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           {sets.map((s, i) => (
             <View key={i} style={styles.seriesRow}>
               <Text style={styles.seriesText}>
-                Serie {i + 1}: {s.weight} kg × {s.reps} (RIR {rirLabel(s.rir)})
+                Serie {i + 1}: {s.weight} kg × {iso ? `${s.time}s` : s.reps} (RIR {rirLabel(s.rir)})
               </Text>
               <TouchableOpacity style={styles.btnSmallGhost} onPress={() => onRemoveSet(i)}>
                 <Text style={styles.btnSmallGhostText}>Quitar</Text>
@@ -2681,7 +2979,9 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           {isPR ? <Text style={styles.prText}>🏆 Nuevo PR de e1RM</Text> : null}
           {isStall ? (
             <Text style={styles.stallText}>
-              Posible estancamiento: descarga a {round1(firstSetWeight(exercise.sessions[exercise.sessions.length - 1]) * 0.9)} kg y reconstruye.
+              {iso
+                ? `Posible estancamiento: descarga el tiempo de trabajo a ${round1(isoBestTime(exercise.sessions[exercise.sessions.length - 1]) * 0.9)}s y reconstruye.`
+                : `Posible estancamiento: descarga a ${round1(firstSetWeight(exercise.sessions[exercise.sessions.length - 1]) * 0.9)} kg y reconstruye.`}
             </Text>
           ) : null}
           <Text style={styles.historyMeta}>Bloque actual: sesión {block.sessionsInBlock}</Text>
@@ -2712,22 +3012,26 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
             </View>
           ) : null}
 
-          <TouchableOpacity style={styles.linkBtn} onPress={() => setShowFullHistory((v) => !v)}>
-            <Text style={styles.linkBtnText}>
-              {showFullHistory ? 'Ocultar historial completo' : 'Ver historial completo'}
-            </Text>
-          </TouchableOpacity>
-          {showFullHistory ? (
-            <View style={styles.historyList}>
-              {fullHistory.map((h) => (
-                <View key={h.ts} style={styles.historyItem}>
-                  <Text style={styles.historyDate}>{shortDate(h.ts)}</Text>
-                  <Text style={styles.historyItemText}>
-                    {h.setCount}×{h.firstReps} @ {h.weight} kg · e1RM {h.e1rm} kg · Vol {h.vol} kg
-                  </Text>
+          {!iso ? (
+            <>
+              <TouchableOpacity style={styles.linkBtn} onPress={() => setShowFullHistory((v) => !v)}>
+                <Text style={styles.linkBtnText}>
+                  {showFullHistory ? 'Ocultar historial completo' : 'Ver historial completo'}
+                </Text>
+              </TouchableOpacity>
+              {showFullHistory ? (
+                <View style={styles.historyList}>
+                  {fullHistory.map((h) => (
+                    <View key={h.ts} style={styles.historyItem}>
+                      <Text style={styles.historyDate}>{shortDate(h.ts)}</Text>
+                      <Text style={styles.historyItemText}>
+                        {h.setCount}×{h.firstReps} @ {h.weight} kg · e1RM {h.e1rm} kg · Vol {h.vol} kg
+                      </Text>
+                    </View>
+                  ))}
                 </View>
-              ))}
-            </View>
+              ) : null}
+            </>
           ) : null}
         </View>
       ) : null}
@@ -3431,9 +3735,10 @@ function makeStyles() {
     backgroundColor: colors.accent,
   },
   tabText: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.muted,
+    textAlign: 'center',
   },
   tabTextActive: {
     color: colors.onAccent,
@@ -3728,6 +4033,17 @@ function makeStyles() {
     fontWeight: '500',
     color: colors.muted,
     marginTop: 2,
+  },
+  muscleChip: {
+    flexGrow: 0,
+    flexShrink: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassInput,
+    alignItems: 'center',
   },
   rirRow: {
     flexDirection: 'row',
