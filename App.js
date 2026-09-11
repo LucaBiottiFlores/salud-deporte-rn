@@ -27,7 +27,12 @@ const HIIT_LOG_KEY = 'salud-deporte:hiit-log';
 
 const GENERIC_AUTH_ERROR = 'No se pudo completar la acción. Revisá los datos e intentalo de nuevo.';
 
-const SITE_URL = 'https://lucabiottiflores.github.io/salud-deporte-rn/';
+function getSiteUrl() {
+  if (typeof window !== 'undefined' && window.location) {
+    return window.location.origin + window.location.pathname;
+  }
+  return 'https://lucabiottiflores.github.io/salud-deporte-rn/';
+}
 
 // Rangos de reps con respaldo en la literatura de sobrecarga progresiva:
 // fuerza 1-6 reps, hipertrofia 6-15 reps. Fijos para evitar rangos sin límite.
@@ -983,7 +988,7 @@ function LoginForm({ onSwitch }) {
     try {
       const { error: err } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: SITE_URL },
+        options: { redirectTo: getSiteUrl() },
       });
       if (err) setError(mapAuthError(err));
     } catch (_) {
