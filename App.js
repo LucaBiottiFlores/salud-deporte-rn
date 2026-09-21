@@ -69,6 +69,12 @@ const LIGHT_COLORS = {
   glassBorder: 'rgba(255,255,255,0.75)',
   glassCard: 'rgba(255,255,255,0.52)',
   glassInput: 'rgba(255,255,255,0.44)',
+  aurora: {
+    a: '#3ec6cd',
+    b: '#5ad2e6',
+    c: '#b1a7f0',
+    d: '#f6b73c',
+  },
 };
 
 const DARK_COLORS = {
@@ -93,6 +99,12 @@ const DARK_COLORS = {
   glassBorder: 'rgba(255,255,255,0.20)',
   glassCard: 'rgba(255,255,255,0.10)',
   glassInput: 'rgba(9,14,24,0.34)',
+  aurora: {
+    a: '#5ad2d6',
+    b: '#55c7dd',
+    c: '#7a6fd6',
+    d: '#f0b45a',
+  },
 };
 
 const TIMER_COLORS = {
@@ -699,6 +711,9 @@ function AuroraBackground() {
     return () => loops.forEach((l) => l.stop());
   }, [driftA, driftB, reduceMotion]);
 
+  const isDark = colors === THEMES.dark;
+  const op = (v) => Math.round(v * (isDark ? 1 : 1.55) * 100) / 100;
+
   const layerA = {
     transform: [
       { translateX: driftA.interpolate({ inputRange: [0, 1], outputRange: [-20, 20] }) },
@@ -737,19 +752,19 @@ function AuroraBackground() {
                 <FeGaussianBlur stdDeviation="6" />
               </Filter>
               <RadialGradient id="aAccent" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.40" />
-                <Stop offset="42%" stopColor={colors.accent} stopOpacity="0.14" />
-                <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
+                <Stop offset="0%" stopColor={colors.aurora.a} stopOpacity={op(0.40)} />
+                <Stop offset="42%" stopColor={colors.aurora.a} stopOpacity={op(0.14)} />
+                <Stop offset="100%" stopColor={colors.aurora.a} stopOpacity="0" />
               </RadialGradient>
               <RadialGradient id="aRest" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={colors.rest} stopOpacity="0.36" />
-                <Stop offset="44%" stopColor={colors.rest} stopOpacity="0.12" />
-                <Stop offset="100%" stopColor={colors.rest} stopOpacity="0" />
+                <Stop offset="0%" stopColor={colors.aurora.b} stopOpacity={op(0.36)} />
+                <Stop offset="44%" stopColor={colors.aurora.b} stopOpacity={op(0.12)} />
+                <Stop offset="100%" stopColor={colors.aurora.b} stopOpacity="0" />
               </RadialGradient>
               <RadialGradient id="aIrid" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={colors.irid} stopOpacity="0.30" />
-                <Stop offset="44%" stopColor={colors.irid} stopOpacity="0.10" />
-                <Stop offset="100%" stopColor={colors.irid} stopOpacity="0" />
+                <Stop offset="0%" stopColor={colors.aurora.c} stopOpacity={op(0.30)} />
+                <Stop offset="44%" stopColor={colors.aurora.c} stopOpacity={op(0.10)} />
+                <Stop offset="100%" stopColor={colors.aurora.c} stopOpacity="0" />
               </RadialGradient>
             </Defs>
             <G filter="url(#auroraBlurA)">
@@ -772,19 +787,25 @@ function AuroraBackground() {
                 <FeGaussianBlur stdDeviation="8" />
               </Filter>
               <RadialGradient id="bRest" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={colors.rest} stopOpacity="0.30" />
-                <Stop offset="46%" stopColor={colors.rest} stopOpacity="0.10" />
-                <Stop offset="100%" stopColor={colors.rest} stopOpacity="0" />
+                <Stop offset="0%" stopColor={colors.aurora.b} stopOpacity={op(0.30)} />
+                <Stop offset="46%" stopColor={colors.aurora.b} stopOpacity={op(0.10)} />
+                <Stop offset="100%" stopColor={colors.aurora.b} stopOpacity="0" />
               </RadialGradient>
               <RadialGradient id="bIrid" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={colors.irid} stopOpacity="0.28" />
-                <Stop offset="46%" stopColor={colors.irid} stopOpacity="0.09" />
-                <Stop offset="100%" stopColor={colors.irid} stopOpacity="0" />
+                <Stop offset="0%" stopColor={colors.aurora.c} stopOpacity={op(0.28)} />
+                <Stop offset="46%" stopColor={colors.aurora.c} stopOpacity={op(0.09)} />
+                <Stop offset="100%" stopColor={colors.aurora.c} stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="bAmber" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={colors.aurora.d} stopOpacity={op(0.26)} />
+                <Stop offset="46%" stopColor={colors.aurora.d} stopOpacity={op(0.08)} />
+                <Stop offset="100%" stopColor={colors.aurora.d} stopOpacity="0" />
               </RadialGradient>
             </Defs>
             <G filter="url(#auroraBlurB)">
               <Circle cx="100" cy="58" r="54" fill="url(#bRest)" />
               <Circle cx="-16" cy="42" r="52" fill="url(#bIrid)" />
+              <Circle cx="48" cy="106" r="50" fill="url(#bAmber)" />
             </G>
           </Svg>
         </Animated.View>
@@ -915,7 +936,6 @@ export default function App() {
             ) : null}
             <GlassSheen radius={20} />
             <Text style={styles.title}>KO FIT</Text>
-            <Text style={styles.tagline}>Entrená. Progresa. Vuelve.</Text>
           </View>
         </View>
 
@@ -936,14 +956,14 @@ export default function App() {
               onPress={() => changeTab('tabata')}
             />
             <TabButton
-              label="Notas"
-              active={activeTab === 'notas'}
-              onPress={() => changeTab('notas')}
-            />
-            <TabButton
               label="Progresión"
               active={activeTab === 'progresion'}
               onPress={() => changeTab('progresion')}
+            />
+            <TabButton
+              label="Notas"
+              active={activeTab === 'notas'}
+              onPress={() => changeTab('notas')}
             />
             <TabButton
               label="Glosario"
@@ -951,14 +971,14 @@ export default function App() {
               onPress={() => changeTab('glosario')}
             />
             <TabButton
-              label="Ajustes"
-              active={activeTab === 'ajustes'}
-              onPress={() => changeTab('ajustes')}
-            />
-            <TabButton
               label="Perfil"
               active={activeTab === 'perfil'}
               onPress={() => changeTab('perfil')}
+            />
+            <TabButton
+              label="Ajustes"
+              active={activeTab === 'ajustes'}
+              onPress={() => changeTab('ajustes')}
             />
           </View>
         </View>
@@ -966,14 +986,21 @@ export default function App() {
         <View style={[styles.view, { display: activeTab === 'tabata' ? 'flex' : 'none' }]}>
           <TabataScreen />
         </View>
-        <View style={[styles.view, { display: activeTab === 'notas' ? 'flex' : 'none' }]}>
-          <NotesScreen />
-        </View>
         <View style={[styles.view, { display: activeTab === 'progresion' ? 'flex' : 'none' }]}>
           <ProgresionScreen />
         </View>
+        <View style={[styles.view, { display: activeTab === 'notas' ? 'flex' : 'none' }]}>
+          <NotesScreen />
+        </View>
         <View style={[styles.view, { display: activeTab === 'glosario' ? 'flex' : 'none' }]}>
           <GlosarioScreen />
+        </View>
+        <View style={[styles.view, { display: activeTab === 'perfil' ? 'flex' : 'none' }]}>
+          <PerfilScreen
+            user={session.user}
+            active={activeTab === 'perfil'}
+            onLogout={() => supabase.auth.signOut()}
+          />
         </View>
         <View style={[styles.view, { display: activeTab === 'ajustes' ? 'flex' : 'none' }]}>
           <AjustesScreen
@@ -981,13 +1008,6 @@ export default function App() {
             onToggleDark={toggleDark}
             onLogout={() => supabase.auth.signOut()}
             userEmail={session && session.user ? session.user.email : ''}
-          />
-        </View>
-        <View style={[styles.view, { display: activeTab === 'perfil' ? 'flex' : 'none' }]}>
-          <PerfilScreen
-            user={session.user}
-            active={activeTab === 'perfil'}
-            onLogout={() => supabase.auth.signOut()}
           />
         </View>
       </View>
@@ -3903,11 +3923,6 @@ function makeStyles() {
     fontWeight: '800',
     color: colors.text,
   },
-  tagline: {
-    fontSize: 14,
-    color: colors.muted,
-    marginTop: 2,
-  },
   tabBarShadow: {
     marginBottom: 12,
     shadowColor: '#000000',
@@ -4940,16 +4955,20 @@ function makeStyles() {
 
 let colors = THEMES.light;
 let styles = makeStyles();
-let timerColors = TIMER_COLORS;
-let timerStyles = (() => {
+let timerColors = THEMES.light;
+let timerStyles = buildTimerStyles();
+
+function buildTimerStyles() {
   const prev = colors;
-  colors = TIMER_COLORS;
+  colors = timerColors;
   const s = makeStyles();
   colors = prev;
   return s;
-})();
+}
 
 function applyTheme(dark) {
   colors = dark ? THEMES.dark : THEMES.light;
+  timerColors = dark ? TIMER_COLORS : THEMES.light;
   styles = makeStyles();
+  timerStyles = buildTimerStyles();
 }
