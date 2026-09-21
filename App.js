@@ -26,7 +26,7 @@ const NOTES_KEY = 'salud-deporte:notas';
 const PROGRESION_KEY = 'salud-deporte:progresion';
 const HIIT_LOG_KEY = 'salud-deporte:hiit-log';
 
-const GENERIC_AUTH_ERROR = 'No se pudo completar la acción. Revisá los datos e intentalo de nuevo.';
+const GENERIC_AUTH_ERROR = 'No se pudo completar la acción. Revisa los datos e inténtalo de nuevo.';
 
 function getSiteUrl() {
   if (typeof window !== 'undefined' && window.location) {
@@ -227,9 +227,6 @@ const CALIBRATION_KEY = 'salud-deporte:no-calibracion';
 const RECOMMENDATIONS_KEY = 'salud-deporte:recomendaciones';
 const DELOAD_DISMISS_KEY = 'salud-deporte:no-deload';
 
-const SOUND_NAMES = ['clasico', 'agudo', 'grave'];
-const SOUND_LABELS = { clasico: 'Clásico', agudo: 'Agudo', grave: 'Grave' };
-
 const BELL_ASSET = require('./assets/campana_boxeo.mp3');
 const RACE_ASSET = require('./assets/inicio_carrera_v2.wav');
 const SILENT_ASSET = require('./assets/silencio.wav');
@@ -238,14 +235,6 @@ const SOUND_PRESETS = {
   clasico: {
     rest: require('./assets/rest_clasico.wav'),
     done: require('./assets/done_clasico.wav'),
-  },
-  agudo: {
-    rest: require('./assets/rest_agudo.wav'),
-    done: require('./assets/done_agudo.wav'),
-  },
-  grave: {
-    rest: require('./assets/rest_grave.wav'),
-    done: require('./assets/done_grave.wav'),
   },
 };
 
@@ -737,7 +726,7 @@ function suggestionFor(ex, ignoreDeload = false) {
   let reason = `Mantén el peso y completa ${repMax} reps en todas las series antes de subir la carga.`;
   if (hitTop && volumeDropped) {
     reps = repMax;
-    reason = 'Llegaste al tope, pero tu volumen bajó esta sesión (probaste un peso que no sostuviste). Mantené la carga y recuperá el volumen antes de subir.';
+    reason = 'Llegaste al tope, pero tu volumen bajó esta sesión (probaste un peso que no sostuviste). Mantén la carga y recupera el volumen antes de subir.';
   } else if (avgRir !== null && avgRir >= 3) {
     reps = repMax;
     reason = `Tu esfuerzo fue bajo (RIR ${avgRir}): sube directo a ${repMax} reps en todas las series.`;
@@ -868,7 +857,7 @@ function passwordChecks(pw) {
 function mapAuthError(err) {
   const m = ((err && err.message) || '').toLowerCase();
   if (m.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.';
-  if (m.includes('email not confirmed')) return 'Tu correo aún no está confirmado. Revisá tu bandeja de entrada y el spam.';
+  if (m.includes('email not confirmed')) return 'Tu correo aún no está confirmado. Revisa tu bandeja de entrada y el spam.';
   if (m.includes('user already registered')) return 'Ya existe una cuenta con ese correo.';
   if (
     m.includes('password should be') ||
@@ -876,13 +865,13 @@ function mapAuthError(err) {
     m.includes('at least 8 characters') ||
     m.includes('stronger password')
   ) {
-    return 'La contraseña es demasiado débil: usá al menos 8 caracteres con una mayúscula, un número y un símbolo.';
+    return 'La contraseña es demasiado débil: usa al menos 8 caracteres con una mayúscula, un número y un símbolo.';
   }
   if (m.includes('new password should be different')) return 'La nueva contraseña debe ser distinta de la anterior.';
-  if (m.includes('rate limit') || m.includes('too many requests')) return 'Demasiados intentos. Esperá unos minutos e intentalo de nuevo.';
+  if (m.includes('rate limit') || m.includes('too many requests')) return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
   if (m.includes('invalid email') || m.includes('unable to validate email')) return 'El correo tiene un formato inválido.';
-  if (m.includes('provider') || m.includes('oauth')) return 'No se pudo conectar con Google. Revisá la configuración del proveedor.';
-  if (m.includes('expired') && m.includes('session')) return 'Tu sesión expiró. Volvé a iniciar sesión.';
+  if (m.includes('provider') || m.includes('oauth')) return 'No se pudo conectar con Google. Revisa la configuración del proveedor.';
+  if (m.includes('expired') && m.includes('session')) return 'Tu sesión expiró. Vuelve a iniciar sesión.';
   return GENERIC_AUTH_ERROR;
 }
 
@@ -1351,7 +1340,7 @@ function LoginForm({ onSwitch }) {
   async function handleLogin() {
     const trimmed = email.trim();
     if (!trimmed || !password) {
-      setError('Ingresá tu correo y contraseña.');
+      setError('Ingresa tu correo y contraseña.');
       return;
     }
     setBusy(true);
@@ -1441,7 +1430,7 @@ function LoginForm({ onSwitch }) {
       </TouchableOpacity>
 
       <View style={styles.authFooter}>
-        <Text style={styles.authFooterText}>¿No tenés cuenta?</Text>
+        <Text style={styles.authFooterText}>¿No tienes cuenta?</Text>
         <TouchableOpacity onPress={() => onSwitch('register')}>
           <Text style={styles.linkBtnText}> Crear cuenta</Text>
         </TouchableOpacity>
@@ -1472,15 +1461,15 @@ function RegisterForm({ onSwitch, onNeedsConfirm }) {
     const c = country.trim();
 
     if (!f || !l) {
-      setError('Ingresá tu nombre y apellido.');
+      setError('Ingresa tu nombre y apellido.');
       return;
     }
     if (!emailValid) {
-      setError('Ingresá un correo válido.');
+      setError('Ingresa un correo válido.');
       return;
     }
     if (!c) {
-      setError('Ingresá tu país.');
+      setError('Ingresa tu país.');
       return;
     }
     if (!(checks.length && checks.upper && checks.number && checks.symbol)) {
@@ -1630,7 +1619,7 @@ function RegisterForm({ onSwitch, onNeedsConfirm }) {
       </TouchableOpacity>
 
       <View style={styles.authFooter}>
-        <Text style={styles.authFooterText}>¿Ya tenés cuenta?</Text>
+        <Text style={styles.authFooterText}>¿Ya tienes cuenta?</Text>
         <TouchableOpacity onPress={() => onSwitch('login')}>
           <Text style={styles.linkBtnText}> Iniciar sesión</Text>
         </TouchableOpacity>
@@ -1655,7 +1644,7 @@ function ForgotForm({ onSwitch }) {
   async function handleSubmit() {
     const trimmed = email.trim();
     if (!trimmed) {
-      setError('Ingresá tu correo.');
+      setError('Ingresa tu correo.');
       return;
     }
     setBusy(true);
@@ -1675,7 +1664,7 @@ function ForgotForm({ onSwitch }) {
 
   if (sent) {
     return (
-      <AuthScaffold title="Revisá tu correo" subtitle="Te enviamos un enlace para recuperar tu contraseña.">
+      <AuthScaffold title="Revisa tu correo" subtitle="Te enviamos un enlace para recuperar tu contraseña.">
         <Text style={styles.authNoticeText}>
           Si existe una cuenta con ese correo, vas a recibir un enlace para restablecer tu contraseña.
         </Text>
@@ -1691,7 +1680,7 @@ function ForgotForm({ onSwitch }) {
   }
 
   return (
-    <AuthScaffold title="Recuperar contraseña" subtitle="Ingresá tu correo y te enviamos un enlace.">
+    <AuthScaffold title="Recuperar contraseña" subtitle="Ingresa tu correo y te enviamos un enlace.">
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Correo electrónico</Text>
         <TextInput
@@ -1758,7 +1747,7 @@ function NewPasswordForm({ onDone, onSwitch }) {
 
   if (success) {
     return (
-      <AuthScaffold title="Contraseña actualizada" subtitle="Ya podés usar tu nueva contraseña.">
+      <AuthScaffold title="Contraseña actualizada" subtitle="Ya puedes usar tu nueva contraseña.">
         <Text style={styles.authSuccessText}>Tu contraseña fue actualizada correctamente.</Text>
         <TouchableOpacity
           style={[styles.btnPrimary, styles.authSpaced]}
@@ -1772,7 +1761,7 @@ function NewPasswordForm({ onDone, onSwitch }) {
   }
 
   return (
-    <AuthScaffold title="Nueva contraseña" subtitle="Ingresá y confirmá tu nueva contraseña.">
+    <AuthScaffold title="Nueva contraseña" subtitle="Ingresa y confirma tu nueva contraseña.">
       <PasswordField
         label="Nueva contraseña"
         value={password}
@@ -1816,11 +1805,11 @@ function NewPasswordForm({ onDone, onSwitch }) {
 
 function CheckEmail({ email, onSwitch }) {
   return (
-    <AuthScaffold title="Revisá tu correo" subtitle="Te enviamos un enlace para confirmar tu cuenta.">
+    <AuthScaffold title="Revisa tu correo" subtitle="Te enviamos un enlace para confirmar tu cuenta.">
       <Text style={styles.authNoticeText}>
         Te mandamos un correo de confirmación a{' '}
-        <Text style={styles.authNoticeEmail}>{email}</Text>. Revisá tu bandeja de entrada (y el spam) y
-        seguí el enlace para activar tu cuenta.
+        <Text style={styles.authNoticeEmail}>{email}</Text>. Revisa tu bandeja de entrada (y el spam) y
+        sigue el enlace para activar tu cuenta.
       </Text>
       <TouchableOpacity
         style={[styles.btnPrimary, styles.authSpaced]}
@@ -1926,8 +1915,6 @@ function TabataScreen() {
   const [workInput, setWorkInput] = useState('0:30');
   const [restInput, setRestInput] = useState('0:15');
   const [seriesInput, setSeriesInput] = useState('5');
-  const [sound, setSound] = useState('clasico');
-  const soundRef = useRef('clasico');
   const [configError, setConfigError] = useState('');
 
   const [screen, setScreen] = useState('config');
@@ -1974,10 +1961,6 @@ function TabataScreen() {
         }
         if (Number.isFinite(saved.series) && saved.series >= 1) {
           setSeriesInput(String(saved.series));
-        }
-        if (saved.sound && SOUND_NAMES.includes(saved.sound)) {
-          setSound(saved.sound);
-          soundRef.current = saved.sound;
         }
       } catch (_) {}
     })();
@@ -2134,12 +2117,12 @@ function TabataScreen() {
   }
 
   function playRestTone() {
-    const preset = SOUND_PRESETS[soundRef.current] || SOUND_PRESETS.clasico;
+    const preset = SOUND_PRESETS.clasico;
     playToneAsset(preset.rest);
   }
 
   function playDone() {
-    const preset = SOUND_PRESETS[soundRef.current] || SOUND_PRESETS.clasico;
+    const preset = SOUND_PRESETS.clasico;
     playToneAsset(preset.done);
   }
 
@@ -2173,7 +2156,7 @@ function TabataScreen() {
     if (isWeb) return;
     loadBell();
     loadRace();
-    const preset = SOUND_PRESETS[soundRef.current] || SOUND_PRESETS.clasico;
+    const preset = SOUND_PRESETS.clasico;
     [preset.rest, preset.done].forEach((asset) => {
       if (!toneSoundRef.current[asset]) {
         toneSoundRef.current[asset] = ExpoAudio.Sound.createAsync(asset).then((res) => res.sound);
@@ -2322,7 +2305,7 @@ function TabataScreen() {
     sessionRef.current = { work, rest, series };
     phasesRef.current = buildPhases(work, rest, series);
     idxRef.current = 0;
-    saveConfig({ work, rest, series, sound });
+    saveConfig({ work, rest, series });
     runningRef.current = true;
     pausedRef.current = false;
     setIsPaused(false);
@@ -2336,19 +2319,6 @@ function TabataScreen() {
     try {
       await AsyncStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
     } catch (_) {}
-  }
-
-  function chooseSound(name) {
-    setSound(name);
-    soundRef.current = name;
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(CONFIG_KEY);
-        const saved = raw ? JSON.parse(raw) : {};
-        saved.sound = name;
-        await AsyncStorage.setItem(CONFIG_KEY, JSON.stringify(saved));
-      } catch (_) {}
-    })();
   }
 
   function togglePause() {
@@ -2473,23 +2443,6 @@ function TabataScreen() {
             placeholder="5"
             placeholderTextColor="#9ca3af"
           />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Sonido</Text>
-          <View style={styles.soundRow}>
-            {SOUND_NAMES.map((name) => (
-              <TouchableOpacity
-                key={name}
-                style={[styles.soundChip, sound === name && styles.soundChipActive]}
-                onPress={() => chooseSound(name)}
-              >
-                <Text style={[styles.soundChipText, sound === name && styles.soundChipTextActive]}>
-                  {SOUND_LABELS[name]}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
 
         <PrimaryButton onPress={start}>
@@ -2692,6 +2645,10 @@ const GLOSARIO_TERMS = [
   {
     title: 'Estancamiento / meseta',
     text: 'Sin mejora durante varias sesiones pese a entrenar bien. Señal para ajustar algo.',
+  },
+  {
+    title: 'Variaciones en peso corporal',
+    text: 'En calistenia se progresa subiendo la dificultad de la palanca: de una flexión de rodillas a una flexión estándar, luego a una declinada o a un brazo. Cada variación aumenta la tensión mecánica sin agregar kilos, y cuando dominas la variación más difícil con el tope de repeticiones, es el momento de sumar carga externa.',
   },
 ];
 
@@ -3193,13 +3150,13 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
                     {ladderFor(formName).map((step, i) => (
                       <TouchableOpacity
                         key={step}
-                        style={[styles.goalChip, formVariation === i && styles.goalChipActive]}
+                        style={[styles.variationChip, formVariation === i && styles.goalChipActive]}
                         onPress={() => setFormVariation(i)}
                       >
                         <Text
                           style={[
-                            styles.goalChipText,
-                            formVariation === i && styles.goalChipTextActive,
+                            styles.variationChipText,
+                            formVariation === i && styles.variationChipTextActive,
                           ]}
                         >
                           {step}
@@ -3208,7 +3165,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
                     ))}
                   </View>
                   <Text style={styles.fieldHint}>
-                    Elegí la variación con la que partes hoy. La app te guiará a las siguientes.
+                    Elige la variación con la que empiezas hoy. La app te guiará a las siguientes.
                   </Text>
                 </View>
 
@@ -3437,7 +3394,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
             <Text style={styles.modalTitle}>Nivel avanzado alcanzado</Text>
             <Text style={styles.modalBody}>
               {`Dominaste «${addWeightOffer?.variation}» (${addWeightOffer?.reps} reps en todas las series). `}
-              La evidencia muestra que, al dominar la variación más difícil de tu escalera, agregar carga externa es más eficiente para seguir progresando en fuerza y masa muscular. ¿Querés empezar a agregar peso a este ejercicio?
+              La evidencia muestra que, al dominar la variación más difícil de tu escalera, agregar carga externa es más eficiente para seguir progresando en fuerza y masa muscular. ¿Quieres empezar a agregar peso a este ejercicio?
             </Text>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={[styles.btn, styles.modalGhost]} onPress={() => setAddWeightOffer(null)}>
@@ -3682,13 +3639,13 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
             {(Array.isArray(exercise.ladder) && exercise.ladder.length > 0 ? exercise.ladder : BODYWEIGHT_GENERIC).map((step, i) => (
               <TouchableOpacity
                 key={step}
-                style={[styles.goalChip, exercise.variationIndex === i && styles.goalChipActive]}
+                style={[styles.variationChip, exercise.variationIndex === i && styles.goalChipActive]}
                 onPress={() => onApplyVariation(i)}
               >
                 <Text
                   style={[
-                    styles.goalChipText,
-                    exercise.variationIndex === i && styles.goalChipTextActive,
+                    styles.variationChipText,
+                    exercise.variationIndex === i && styles.variationChipTextActive,
                   ]}
                 >
                   {step}
@@ -3983,7 +3940,7 @@ function RadarChart({ data }) {
   const prevPoints = data.map((d, i) => pointFor(d.prev, i)).join(' ');
 
   return (
-    <Svg width="100%" height="100%" viewBox="-12 -12 124 124">
+    <Svg width="100%" height="100%" viewBox="-30 -30 160 160">
       <G>
         {[0.25, 0.5, 0.75, 1].map((f) => (
           <Polygon
@@ -4056,7 +4013,7 @@ function RadarChart({ data }) {
               y={y}
               textAnchor={anchor}
               dy={dy}
-              fontSize={5}
+              fontSize={4.4}
               fontWeight="600"
               fill={colors.muted}
             >
@@ -4186,7 +4143,7 @@ function PerfilScreen({ user, active, onLogout }) {
     const f = editFirst.trim();
     const l = editLast.trim();
     if (!f || !l) {
-      setNameError('Ingresá nombre y apellido.');
+      setNameError('Ingresa nombre y apellido.');
       setNameStatus('error');
       return;
     }
@@ -4303,6 +4260,20 @@ function PerfilScreen({ user, active, onLogout }) {
             <View style={styles.radarWrap}>
               <RadarChart data={radar} />
             </View>
+            <View style={styles.weekRow}>
+              {[
+                { label: 'Esta semana', color: colors.accent, op: 1 },
+                { label: 'Hace 1', color: colors.ready, op: 0.8 },
+                { label: 'Hace 2', color: colors.ready, op: 0.6 },
+                { label: 'Hace 3', color: colors.ready, op: 0.42 },
+              ].map((w, i) => (
+                <View key={w.label} style={styles.weekCard}>
+                  <View style={[styles.weekDot, { backgroundColor: w.color, opacity: w.op }]} />
+                  <Text style={styles.weekValue}>{Math.round(weekTotals[i])}</Text>
+                  <Text style={styles.weekLabel}>{w.label}</Text>
+                </View>
+              ))}
+            </View>
             <View style={styles.legendRow}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
@@ -4310,22 +4281,14 @@ function PerfilScreen({ user, active, onLogout }) {
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: colors.ready }]} />
-                <Text style={styles.legendText}>Mejor de 4 semanas previas</Text>
+                <Text style={styles.legendText}>Semanas previas</Text>
               </View>
             </View>
-            <View style={styles.weekRow}>
-              {['Esta semana', 'Hace 1', 'Hace 2', 'Hace 3'].map((label, i) => (
-                <View key={label} style={styles.weekCard}>
-                  <Text style={styles.weekValue}>{Math.round(weekTotals[i])}</Text>
-                  <Text style={styles.weekLabel}>{label}</Text>
-                </View>
-              ))}
-            </View>
-            <Text style={styles.weekHint}>Carga total (suma de e1RM por grupo muscular) de las últimas 4 semanas.</Text>
+            <Text style={styles.weekHint}>Carga total (e1RM) por grupo muscular. En el radar, el color secundario muestra el mejor de las 4 semanas previas; las tarjetas atenúan su color mientras más antiguas son.</Text>
           </>
         ) : (
           <Text style={styles.notesEmpty}>
-            Completá sesiones de Progresión para ver tu radar semanal.
+            Completa sesiones de Progresión para ver tu radar semanal.
           </Text>
         )}
 
@@ -4413,7 +4376,7 @@ function CalibrationModal({ visible, goal, repMin, repMax, incrementKg, onApply,
             <>
               <Text style={styles.modalTitle}>Prueba de punto de partida</Text>
               <Text style={styles.modalBody}>
-                Elegí un peso que te permita hacer entre 5 y 10 reps con buena técnica, cerca del fallo. Anotá cuántas hiciste y cuántas más calculás que te quedaban.
+                Elige un peso que te permita hacer entre 5 y 10 reps con buena técnica, cerca del fallo. Anota cuántas hiciste y cuántas más calculas que te quedaban.
               </Text>
               <View style={styles.inputRow}>
                 <View style={styles.inputCol}>
@@ -4890,6 +4853,28 @@ function makeStyles() {
     borderColor: colors.glassBorder,
     backgroundColor: colors.glassInput,
     alignItems: 'center',
+  },
+  variationChip: {
+    flexGrow: 0,
+    flexShrink: 1,
+    maxWidth: '100%',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassInput,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  variationChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+    textAlign: 'center',
+  },
+  variationChipTextActive: {
+    color: colors.onAccent,
   },
   rirRow: {
     flexDirection: 'row',
@@ -5590,6 +5575,12 @@ function makeStyles() {
     backgroundColor: colors.glassCard,
     backdropFilter: GLASS_BLUR,
     alignItems: 'center',
+  },
+  weekDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginBottom: 4,
   },
   weekValue: {
     fontSize: 18,
