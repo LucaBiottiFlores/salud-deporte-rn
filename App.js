@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  AppState,
   Easing,
   Modal,
   Platform,
@@ -13,9 +14,9 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio as ExpoAudio } from 'expo-av';
+import { Audio as ExpoAudio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import * as Speech from 'expo-speech';
-import Svg, { Circle, Defs, G, Line, Polygon, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, FeGaussianBlur, Filter, G, Line, Polygon, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from './src/supabase';
@@ -87,11 +88,11 @@ const DARK_COLORS = {
   softBorder: '#26324a',
   prBg: '#131c2b',
   irid: '#7a6fd6',
-  sheen: 'rgba(255,255,255,0.07)',
-  glass: 'rgba(21,28,42,0.62)',
-  glassBorder: 'rgba(255,255,255,0.12)',
-  glassCard: 'rgba(255,255,255,0.06)',
-  glassInput: 'rgba(6,10,18,0.4)',
+  sheen: 'rgba(255,255,255,0.10)',
+  glass: 'rgba(17,24,40,0.46)',
+  glassBorder: 'rgba(255,255,255,0.20)',
+  glassCard: 'rgba(255,255,255,0.10)',
+  glassInput: 'rgba(9,14,24,0.34)',
 };
 
 const TIMER_COLORS = {
@@ -111,11 +112,11 @@ const TIMER_COLORS = {
   softBorder: '#1e2a3d',
   prBg: '#0e1622',
   irid: '#6f66c9',
-  sheen: 'rgba(255,255,255,0.05)',
-  glass: 'rgba(14,22,34,0.62)',
-  glassBorder: 'rgba(255,255,255,0.14)',
-  glassCard: 'rgba(19,30,48,0.50)',
-  glassInput: 'rgba(7,11,18,0.40)',
+  sheen: 'rgba(255,255,255,0.09)',
+  glass: 'rgba(12,20,32,0.48)',
+  glassBorder: 'rgba(255,255,255,0.20)',
+  glassCard: 'rgba(255,255,255,0.10)',
+  glassInput: 'rgba(8,13,22,0.34)',
 };
 
 const THEMES = { light: LIGHT_COLORS, dark: DARK_COLORS };
@@ -127,6 +128,7 @@ const SOUND_LABELS = { clasico: 'Clásico', agudo: 'Agudo', grave: 'Grave' };
 
 const BELL_ASSET = require('./assets/campana_boxeo.mp3');
 const RACE_ASSET = require('./assets/inicio_carrera_v2.wav');
+const SILENT_ASSET = require('./assets/silencio.wav');
 
 const SOUND_PRESETS = {
   clasico: {
@@ -145,7 +147,23 @@ const SOUND_PRESETS = {
 
 const isWeb = Platform.OS === 'web';
 // Frostrar el vidrio de verdad en web (react-native-web 0.21 soporta backdropFilter).
-const GLASS_BLUR = isWeb ? 'blur(30px) saturate(160%)' : undefined;
+const GLASS_BLUR = isWeb ? 'blur(22px) saturate(175%) brightness(1.05)' : undefined;
+
+function splitClock(total) {
+  const t = Math.max(0, Math.floor(Number(total) || 0));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  return { h, m, s };
+}
+
+function formatClock(total) {
+  const { h, m, s } = splitClock(total);
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  if (h > 0) return `${h}:${mm}:${ss}`;
+  return `${m}:${ss}`;
+}
 
 function formatTimeInput(digits) {
   if (!digits) return '';
@@ -156,13 +174,11 @@ function formatTimeInput(digits) {
     minutes += Math.floor(seconds / 60);
     seconds = seconds % 60;
   }
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  return formatClock(minutes * 60 + seconds);
 }
 
 function secondsToDisplay(total) {
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return formatClock(total);
 }
 
 function parseTime(str) {
@@ -170,11 +186,20 @@ function parseTime(str) {
   if (!s) return NaN;
   if (s.includes(':')) {
     const parts = s.split(':');
-    if (parts.length !== 2) return NaN;
-    const m = Math.floor(Number(parts[0]));
-    const sec = Math.floor(Number(parts[1]));
-    if (!Number.isFinite(m) || m < 0 || !Number.isFinite(sec) || sec < 0 || sec > 59) return NaN;
-    return m * 60 + sec;
+    if (parts.length === 2) {
+      const m = Math.floor(Number(parts[0]));
+      const sec = Math.floor(Number(parts[1]));
+      if (!Number.isFinite(m) || m < 0 || !Number.isFinite(sec) || sec < 0 || sec > 59) return NaN;
+      return m * 60 + sec;
+    }
+    if (parts.length === 3) {
+      const h = Math.floor(Number(parts[0]));
+      const m = Math.floor(Number(parts[1]));
+      const sec = Math.floor(Number(parts[2]));
+      if (!Number.isFinite(h) || h < 0 || !Number.isFinite(m) || m < 0 || m > 59 || !Number.isFinite(sec) || sec < 0 || sec > 59) return NaN;
+      return h * 3600 + m * 60 + sec;
+    }
+    return NaN;
   }
   const n = Math.floor(Number(s));
   return Number.isFinite(n) ? n : NaN;
@@ -619,34 +644,74 @@ function mapAuthError(err) {
 }
 
 function AuroraBackground() {
-  const drift = useRef(new Animated.Value(0)).current;
+  const driftA = useRef(new Animated.Value(0)).current;
+  const driftB = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
-    const l = Animated.loop(
-      Animated.sequence([
-        Animated.timing(drift, {
-          toValue: 1,
-          duration: 26000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(drift, {
-          toValue: 0,
-          duration: 26000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    l.start();
-    return () => l.stop();
-  }, [drift]);
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduceMotion(mq.matches);
+    const onChange = (e) => setReduceMotion(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+    };
+  }, []);
 
-  const driftStyle = {
+  useEffect(() => {
+    if (reduceMotion) return;
+    const loops = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(driftA, {
+            toValue: 1,
+            duration: 38000,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(driftA, {
+            toValue: 0,
+            duration: 38000,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(driftB, {
+            toValue: 1,
+            duration: 52000,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(driftB, {
+            toValue: 0,
+            duration: 52000,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+      ),
+    ];
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, [driftA, driftB, reduceMotion]);
+
+  const layerA = {
     transform: [
-      { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-32, 32] }) },
-      { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [20, -20] }) },
-      { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) },
+      { translateX: driftA.interpolate({ inputRange: [0, 1], outputRange: [-20, 20] }) },
+      { translateY: driftA.interpolate({ inputRange: [0, 1], outputRange: [14, -14] }) },
+      { scale: driftA.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) },
+    ],
+  };
+  const layerB = {
+    transform: [
+      { translateX: driftB.interpolate({ inputRange: [0, 1], outputRange: [16, -16] }) },
+      { translateY: driftB.interpolate({ inputRange: [0, 1], outputRange: [-12, 12] }) },
+      { rotate: driftB.interpolate({ inputRange: [0, 1], outputRange: ['-3deg', '3deg'] }) },
+      { scale: driftB.interpolate({ inputRange: [0, 1], outputRange: [1.06, 1] }) },
     ],
   };
 
@@ -659,7 +724,7 @@ function AuroraBackground() {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
         />
-        <Animated.View style={[StyleSheet.absoluteFillObject, driftStyle]}>
+        <Animated.View style={[StyleSheet.absoluteFillObject, layerA]}>
           <Svg
             width="100%"
             height="100%"
@@ -668,27 +733,59 @@ function AuroraBackground() {
             style={StyleSheet.absoluteFillObject}
           >
             <Defs>
-              <RadialGradient id="lgAccent" cx="78" cy="6" r="48" gradientUnits="userSpaceOnUse">
-                <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.32" />
-                <Stop offset="55%" stopColor={colors.accent} stopOpacity="0.11" />
+              <Filter id="auroraBlurA" x="-100%" y="-100%" width="300%" height="300%">
+                <FeGaussianBlur stdDeviation="6" />
+              </Filter>
+              <RadialGradient id="aAccent" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.40" />
+                <Stop offset="42%" stopColor={colors.accent} stopOpacity="0.14" />
                 <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
               </RadialGradient>
-              <RadialGradient id="lgRest" cx="8" cy="92" r="54" gradientUnits="userSpaceOnUse">
-                <Stop offset="0%" stopColor={colors.rest} stopOpacity="0.28" />
-                <Stop offset="55%" stopColor={colors.rest} stopOpacity="0.10" />
+              <RadialGradient id="aRest" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={colors.rest} stopOpacity="0.36" />
+                <Stop offset="44%" stopColor={colors.rest} stopOpacity="0.12" />
                 <Stop offset="100%" stopColor={colors.rest} stopOpacity="0" />
               </RadialGradient>
-              <RadialGradient id="lgIrid" cx="20" cy="14" r="50" gradientUnits="userSpaceOnUse">
-                <Stop offset="0%" stopColor={colors.irid} stopOpacity="0.24" />
-                <Stop offset="55%" stopColor={colors.irid} stopOpacity="0.08" />
+              <RadialGradient id="aIrid" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={colors.irid} stopOpacity="0.30" />
+                <Stop offset="44%" stopColor={colors.irid} stopOpacity="0.10" />
                 <Stop offset="100%" stopColor={colors.irid} stopOpacity="0" />
               </RadialGradient>
             </Defs>
-            <Circle cx="78" cy="6" r="48" fill="url(#lgAccent)" />
-            <Circle cx="8" cy="92" r="54" fill="url(#lgRest)" />
-            <Circle cx="20" cy="14" r="50" fill="url(#lgIrid)" />
-            <Circle cx="94" cy="64" r="42" fill="url(#lgRest)" />
-            <Circle cx="-8" cy="48" r="46" fill="url(#lgIrid)" />
+            <G filter="url(#auroraBlurA)">
+              <Circle cx="84" cy="0" r="58" fill="url(#aAccent)" />
+              <Circle cx="-10" cy="98" r="64" fill="url(#aRest)" />
+              <Circle cx="14" cy="8" r="60" fill="url(#aIrid)" />
+            </G>
+          </Svg>
+        </Animated.View>
+        <Animated.View style={[StyleSheet.absoluteFillObject, layerB]}>
+          <Svg
+            width="100%"
+            height="100%"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            style={StyleSheet.absoluteFillObject}
+          >
+            <Defs>
+              <Filter id="auroraBlurB" x="-100%" y="-100%" width="300%" height="300%">
+                <FeGaussianBlur stdDeviation="8" />
+              </Filter>
+              <RadialGradient id="bRest" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={colors.rest} stopOpacity="0.30" />
+                <Stop offset="46%" stopColor={colors.rest} stopOpacity="0.10" />
+                <Stop offset="100%" stopColor={colors.rest} stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="bIrid" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={colors.irid} stopOpacity="0.28" />
+                <Stop offset="46%" stopColor={colors.irid} stopOpacity="0.09" />
+                <Stop offset="100%" stopColor={colors.irid} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <G filter="url(#auroraBlurB)">
+              <Circle cx="100" cy="58" r="54" fill="url(#bRest)" />
+              <Circle cx="-16" cy="42" r="52" fill="url(#bIrid)" />
+            </G>
           </Svg>
         </Animated.View>
         <LinearGradient
@@ -705,7 +802,7 @@ function AuroraBackground() {
 function GlassSheen({ radius }) {
   return (
     <LinearGradient
-      colors={[colors.sheen, 'rgba(255,255,255,0)', 'rgba(255,255,255,0)']}
+      colors={[colors.sheen, 'rgba(255,255,255,0)', 'rgba(255,255,255,0.055)']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[styles.glassSheen, { borderRadius: radius }]}
@@ -1560,6 +1657,8 @@ function TabataScreen() {
   const intervalRef = useRef(null);
   const mutedRef = useRef(false);
   const sessionRef = useRef({ work: 30, rest: 15, series: 5 });
+  const runningRef = useRef(false);
+  const pausedRef = useRef(false);
 
   const bellRef = useRef(null);
   const raceRef = useRef(null);
@@ -1567,6 +1666,9 @@ function TabataScreen() {
   const racePromiseRef = useRef(null);
   const webBellRef = useRef(null);
   const webRaceRef = useRef(null);
+  const keepAliveRef = useRef(null);
+  const keepAlivePromiseRef = useRef(null);
+  const keepAliveStopTimeoutRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -1595,6 +1697,7 @@ function TabataScreen() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (doneTimeoutRef.current) clearTimeout(doneTimeoutRef.current);
+      if (keepAliveStopTimeoutRef.current) clearTimeout(keepAliveStopTimeoutRef.current);
       const unload = (ref) => {
         if (ref.current) {
           try { ref.current.unloadAsync(); } catch (_) {}
@@ -1603,6 +1706,7 @@ function TabataScreen() {
       };
       unload(bellRef);
       unload(raceRef);
+      unload(keepAliveRef);
       Object.values(toneSoundRef.current).forEach((promise) => {
         if (promise && typeof promise.then === 'function') {
           promise.then((s) => { try { s.unloadAsync(); } catch (_) {} }).catch(() => {});
@@ -1614,7 +1718,27 @@ function TabataScreen() {
       racePromiseRef.current = null;
       webBellRef.current = null;
       webRaceRef.current = null;
+      keepAlivePromiseRef.current = null;
+      keepAliveStopTimeoutRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    if (isWeb) return;
+    ExpoAudio.setAudioModeAsync({
+      staysActiveInBackground: true,
+      playsInSilentModeIOS: true,
+      interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+      shouldDuckAndroid: true,
+    }).catch(() => {});
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        resyncFromClock();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   function say(text) {
@@ -1729,7 +1853,47 @@ function TabataScreen() {
     playToneAsset(preset.done);
   }
 
-  function beginPhase() {
+  async function startKeepAlive() {
+    if (isWeb) return;
+    try {
+      if (!keepAlivePromiseRef.current) {
+        keepAlivePromiseRef.current = ExpoAudio.Sound.createAsync(SILENT_ASSET).then((res) => {
+          keepAliveRef.current = res.sound;
+          return res.sound;
+        });
+      }
+      const s = await keepAlivePromiseRef.current;
+      await s.setVolumeAsync(0);
+      await s.setIsLoopingAsync(true);
+      await s.playAsync();
+    } catch (_) {}
+  }
+
+  function stopKeepAlive() {
+    if (keepAliveStopTimeoutRef.current) {
+      clearTimeout(keepAliveStopTimeoutRef.current);
+      keepAliveStopTimeoutRef.current = null;
+    }
+    if (keepAliveRef.current) {
+      try { keepAliveRef.current.stopAsync(); } catch (_) {}
+    }
+  }
+
+  function preloadSounds() {
+    if (isWeb) return;
+    loadBell();
+    loadRace();
+    const preset = SOUND_PRESETS[soundRef.current] || SOUND_PRESETS.clasico;
+    [preset.rest, preset.done].forEach((asset) => {
+      if (!toneSoundRef.current[asset]) {
+        toneSoundRef.current[asset] = ExpoAudio.Sound.createAsync(asset).then((res) => res.sound);
+      }
+    });
+  }
+
+  function beginPhase(options = {}) {
+    const silent = !!options.silent;
+    const keepEndTime = !!options.keepEndTime;
     if (idxRef.current >= phasesRef.current.length) {
       finish();
       return;
@@ -1744,23 +1908,28 @@ function TabataScreen() {
       setPhaseType('ready');
       setPhaseLabel('Prepárate');
       setSeriesCounter(`Serie 1 de ${totalSeries}`);
-      say('Atención');
+      if (!silent) say('Atención');
     } else if (phase.type === 'work') {
       setPhaseType('work');
       setPhaseLabel('Trabajo');
       setSeriesCounter(`Serie ${phase.seriesNumber} de ${totalSeries}`);
-      playBell();
+      if (!silent) playBell();
     } else {
       setPhaseType('rest');
       setPhaseLabel('Descanso');
       setSeriesCounter(`Descanso ${phase.seriesNumber} de ${totalSeries - 1}`);
-      say('Descanso');
-      playRestTone();
+      if (!silent) {
+        say('Descanso');
+        playRestTone();
+      }
     }
 
-    remainingMsRef.current = phase.seconds * 1000;
-    endTimeRef.current = Date.now() + remainingMsRef.current;
-    setTimeDisplay(String(Math.ceil(remainingMsRef.current / 1000)));
+    if (!keepEndTime) {
+      remainingMsRef.current = phase.seconds * 1000;
+      endTimeRef.current = Date.now() + remainingMsRef.current;
+    }
+    const shown = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+    setTimeDisplay(formatClock(shown));
     setProgress(0);
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(tick, 100);
@@ -1770,7 +1939,7 @@ function TabataScreen() {
     remainingMsRef.current = Math.max(0, endTimeRef.current - Date.now());
     const phase = phasesRef.current[idxRef.current];
     const shownSecond = Math.ceil(remainingMsRef.current / 1000);
-    setTimeDisplay(String(shownSecond));
+    setTimeDisplay(formatClock(shownSecond));
     const total = phase.seconds * 1000;
     setProgress(Math.min(100, ((total - remainingMsRef.current) / total) * 100));
 
@@ -1797,11 +1966,34 @@ function TabataScreen() {
     }
   }
 
+  function resyncFromClock() {
+    if (!runningRef.current || pausedRef.current) return;
+    let guard = 0;
+    let changed = false;
+    while (guard++ < phasesRef.current.length) {
+      const remaining = endTimeRef.current - Date.now();
+      if (remaining > 0) break;
+      changed = true;
+      idxRef.current++;
+      if (idxRef.current >= phasesRef.current.length) {
+        finish();
+        return;
+      }
+      const next = phasesRef.current[idxRef.current];
+      endTimeRef.current += next.seconds * 1000;
+    }
+    if (changed) {
+      beginPhase({ silent: true, keepEndTime: true });
+    }
+    tick();
+  }
+
   const doneTimeoutRef = useRef(null);
 
   function finish() {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = null;
+    runningRef.current = false;
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(HIIT_LOG_KEY);
@@ -1815,13 +2007,13 @@ function TabataScreen() {
       (acc, p) => acc + (p.type === 'ready' ? 0 : p.seconds),
       0
     );
-    const mm = Math.floor(totalSec / 60);
-    const ss = totalSec % 60;
     const { series, work, rest } = sessionRef.current;
-    setSummary(`${series} series · ${work}s trabajo / ${rest}s descanso · total ${mm}m ${ss}s`);
+    setSummary(`${series} series · ${formatClock(work)} trabajo / ${formatClock(rest)} descanso · total ${formatClock(totalSec)}`);
     setScreen('done');
     if (doneTimeoutRef.current) clearTimeout(doneTimeoutRef.current);
     doneTimeoutRef.current = setTimeout(playDone, 1300);
+    if (keepAliveStopTimeoutRef.current) clearTimeout(keepAliveStopTimeoutRef.current);
+    keepAliveStopTimeoutRef.current = setTimeout(stopKeepAlive, 4500);
   }
 
   function start() {
@@ -1833,7 +2025,7 @@ function TabataScreen() {
       !Number.isFinite(rest) || rest < 1 ||
       !Number.isFinite(series) || series < 1
     ) {
-      setConfigError('Ingresa tiempos válidos en formato MM:SS (ej: 1:30) y al menos 1 serie.');
+      setConfigError('Ingresa tiempos válidos (ej: 1:30 o 1:00:00) y al menos 1 serie.');
       return;
     }
     setConfigError('');
@@ -1841,7 +2033,11 @@ function TabataScreen() {
     phasesRef.current = buildPhases(work, rest, series);
     idxRef.current = 0;
     saveConfig({ work, rest, series, sound });
+    runningRef.current = true;
+    pausedRef.current = false;
     setIsPaused(false);
+    startKeepAlive();
+    preloadSounds();
     setScreen('timer');
     beginPhase();
   }
@@ -1870,10 +2066,12 @@ function TabataScreen() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
       remainingMsRef.current = Math.max(0, endTimeRef.current - Date.now());
+      pausedRef.current = true;
       setIsPaused(true);
     } else {
       endTimeRef.current = Date.now() + remainingMsRef.current;
       intervalRef.current = setInterval(tick, 100);
+      pausedRef.current = false;
       setIsPaused(false);
     }
   }
@@ -1885,7 +2083,10 @@ function TabataScreen() {
       clearTimeout(doneTimeoutRef.current);
       doneTimeoutRef.current = null;
     }
+    runningRef.current = false;
+    pausedRef.current = false;
     setIsPaused(false);
+    stopKeepAlive();
     setScreen('config');
   }
 
@@ -1903,7 +2104,7 @@ function TabataScreen() {
       <View style={styles.timerWrap}>
         <View style={[styles.panel, styles.timerPanel]}>
           <Text style={[styles.phaseLabel, { color: phaseColor }]}>{phaseLabel}</Text>
-          <Text style={styles.timeDisplay}>{timeDisplay}</Text>
+          <Text style={styles.timeDisplay} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{timeDisplay}</Text>
           <Text style={styles.seriesCounter}>{seriesCounter}</Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${progress}%` }]} />
@@ -1949,7 +2150,7 @@ function TabataScreen() {
         <Text style={styles.panelTitle}>Configurar sesión</Text>
 
         <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Trabajo (MM:SS)</Text>
+          <Text style={styles.fieldLabel}>Trabajo</Text>
           <TextInput
             style={styles.input}
             value={workInput}
@@ -1961,7 +2162,7 @@ function TabataScreen() {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Descanso (MM:SS)</Text>
+          <Text style={styles.fieldLabel}>Descanso</Text>
           <TextInput
             style={styles.input}
             value={restInput}
