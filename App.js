@@ -2907,7 +2907,18 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
 
   function convertToWeighted(id, startWeight) {
     setExercises((prev) => {
-      const next = prev.map((e) => (e.id === id ? { ...e, mode: 'weighted' } : e));
+      const next = prev.map((e) => {
+        if (e.id !== id) return e;
+        // Las series de peso corporal (sin kg) no aplican como carga: se limpian al pasar a peso.
+        const sessions = (e.sessions || [])
+          .map((s) => ({
+            ts: s.ts,
+            variationIndex: s.variationIndex,
+            sets: (s.sets || []).filter((st) => st && Number.isFinite(Number(st.weight))),
+          }))
+          .filter((s) => s.sets.length > 0);
+        return { ...e, mode: 'weighted', sessions };
+      });
       persistExercises(next);
       return next;
     });
