@@ -47,6 +47,96 @@ const ISO_TIME_PRESETS = ['10-20', '20-30', '30-45', '45-60'];
 
 const MUSCLE_GROUPS = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Antebrazos', 'Piernas', 'Core'];
 
+// Escaleras de progresión de peso corporal (calistenia). Ordenadas de fácil a difícil.
+// El avance se basa en aumentar la dificultad de la palanca (tensión mecánica) y,
+// al dominar la variación más dura con el tope de reps, pasar a carga externa.
+const BODYWEIGHT_LADDERS = [
+  {
+    keywords: ['flexion', 'plancha', 'push', 'lagartija', 'flexo'],
+    steps: [
+      'Flexión en pared',
+      'Flexión inclinada',
+      'Flexión de rodillas',
+      'Flexión estándar',
+      'Flexión diamante',
+      'Flexión declinada',
+      'Flexión arquero',
+      'Flexión a un brazo',
+    ],
+  },
+  {
+    keywords: ['dominada', 'pull up', 'pull-up', 'pullup', 'chin', 'jalon'],
+    steps: [
+      'Dominada asistida (banda)',
+      'Dominada negativa',
+      'Dominada escapular',
+      'Dominada supina',
+      'Dominada estándar',
+      'Dominada arquera',
+      'Dominada a un brazo (asistida)',
+    ],
+  },
+  {
+    keywords: ['fondo', 'dip'],
+    steps: ['Fondo en banco', 'Fondo asistido', 'Fondo en paralelas', 'Fondo con lastre'],
+  },
+  {
+    keywords: ['sentadilla', 'squat', 'pistol'],
+    steps: [
+      'Sentadilla asistida',
+      'Sentadilla al aire',
+      'Sentadilla pistol asistida',
+      'Pistol squat',
+      'Pistol con lastre',
+    ],
+  },
+  {
+    keywords: ['remo', 'row', 'australian', 'invertido'],
+    steps: ['Remo invertido inclinado', 'Remo invertido horizontal', 'Remo invertido con lastre'],
+  },
+  {
+    keywords: ['puente', 'gluteo', 'hip thrust'],
+    steps: [
+      'Puente de glúteo a dos piernas',
+      'Puente de glúteo a una pierna',
+      'Puente de glúteo a una pierna elevado',
+    ],
+  },
+  {
+    keywords: ['pike', 'pino', 'handstand', 'hombro'],
+    steps: [
+      'Pike push-up en suelo',
+      'Pike push-up elevado',
+      'Flexión en pino asistida',
+      'Flexión en pino',
+    ],
+  },
+  {
+    keywords: ['zancada', 'lunge', 'bulgara', 'bulgara'],
+    steps: [
+      'Zancada asistida',
+      'Zancada al aire',
+      'Zancada búlgara',
+      'Zancada búlgara con salto',
+    ],
+  },
+];
+
+const BODYWEIGHT_GENERIC = [
+  'Variación inicial (fácil)',
+  'Variación media',
+  'Variación difícil',
+  'Variación avanzada',
+];
+
+function ladderFor(name) {
+  const n = (name || '').toLowerCase();
+  for (const ladder of BODYWEIGHT_LADDERS) {
+    if (ladder.keywords.some((k) => n.includes(k.toLowerCase()))) return ladder.steps.slice();
+  }
+  return BODYWEIGHT_GENERIC.slice();
+}
+
 const LIGHT_COLORS = {
   bg: '#eef2f8',
   panel: '#f7fafd',
@@ -134,6 +224,8 @@ const TIMER_COLORS = {
 const THEMES = { light: LIGHT_COLORS, dark: DARK_COLORS };
 const THEME_KEY = 'salud-deporte:theme';
 const CALIBRATION_KEY = 'salud-deporte:no-calibracion';
+const RECOMMENDATIONS_KEY = 'salud-deporte:recomendaciones';
+const DELOAD_DISMISS_KEY = 'salud-deporte:no-deload';
 
 const SOUND_NAMES = ['clasico', 'agudo', 'grave'];
 const SOUND_LABELS = { clasico: 'Clásico', agudo: 'Agudo', grave: 'Grave' };
@@ -448,8 +540,124 @@ function isoSuggestionFor(ex, ignoreDeload = false) {
   };
 }
 
+function bodyweightBestReps(session) {
+  if (!session || !Array.isArray(session.sets) || session.sets.length === 0) return 0;
+  const reps = session.sets
+    .filter((s) => s && Number.isFinite(Number(s.reps)))
+    .map((s) => Number(s.reps));
+  return reps.length > 0 ? Math.max(...reps) : 0;
+}
+
+function bodyweightSessionVariation(session, fallback) {
+  if (!session) return fallback;
+  return Number.isFinite(Number(session.variationIndex)) ? Number(session.variationIndex) : fallback;
+}
+
+function bodyweightStalled(ex) {
+  const sessions = ex.sessions || [];
+  if (sessions.length < 4) return false;
+  const last = sessions[sessions.length - 1];
+  const ref = sessions[sessions.length - 4];
+  return (
+    bodyweightBestReps(last) <= bodyweightBestReps(ref) &&
+    bodyweightSessionVariation(last, ex.variationIndex) <= bodyweightSessionVariation(ref, ex.variationIndex)
+  );
+}
+
+function bodyweightSuggestionFor(ex, ignoreDeload = false) {
+  const sessions = ex.sessions || [];
+  const ladder = Array.isArray(ex.ladder) && ex.ladder.length > 0 ? ex.ladder : BODYWEIGHT_GENERIC.slice();
+  const rawVi = Number.isFinite(Number(ex.variationIndex)) ? Math.floor(Number(ex.variationIndex)) : 0;
+  const vi = Math.min(Math.max(rawVi, 0), ladder.length - 1);
+  const repMin = Number.isFinite(Number(ex.repMin)) && Number(ex.repMin) >= 1 ? Math.floor(Number(ex.repMin)) : 8;
+  const repMax = Number.isFinite(Number(ex.repMax)) && Number(ex.repMax) >= repMin ? Math.floor(Number(ex.repMax)) : Math.max(repMin, 12);
+  const variation = ladder[vi];
+
+  if (sessions.length === 0) {
+    return {
+      weight: null,
+      reps: repMin,
+      variation,
+      variationIndex: vi,
+      reason: `Primera sesión: empieza en «${variation}» y haz ${repMin} reps con buena técnica.`,
+      kind: 'start',
+    };
+  }
+
+  const last = sessions[sessions.length - 1];
+  const validSets = (last?.sets || []).filter((s) => s && Number.isFinite(Number(s.reps)));
+  if (validSets.length === 0) {
+    return {
+      weight: null,
+      reps: repMin,
+      variation,
+      variationIndex: vi,
+      reason: 'Registra una serie con reps para ver la siguiente sugerencia.',
+      kind: 'start',
+    };
+  }
+
+  const workReps = Math.max(...validSets.map((s) => Number(s.reps)));
+  const avgRir = lastAvgRir(last);
+  const hitTop = validSets.every((s) => Number(s.reps) >= repMax);
+
+  if (!ignoreDeload && bodyweightStalled(ex)) {
+    const easier = vi > 0 ? ladder[vi - 1] : null;
+    return {
+      weight: null,
+      reps: repMin,
+      variation: easier || variation,
+      variationIndex: easier ? vi - 1 : vi,
+      reason: easier
+        ? `Posible estancamiento: vuelve a «${easier}» una o dos sesiones y reconstruye desde ahí.`
+        : 'Posible estancamiento: baja el volumen (menos series o reps) una semana y reconstruye.',
+      kind: 'deload',
+    };
+  }
+
+  if (hitTop) {
+    if (vi < ladder.length - 1) {
+      const next = ladder[vi + 1];
+      return {
+        weight: null,
+        reps: repMin,
+        variation: next,
+        variationIndex: vi + 1,
+        reason: `Dominaste «${variation}» (${repMax} reps en todas las series). Progresa a una variación más difícil: «${next}».`,
+        kind: 'advance_variation',
+      };
+    }
+    return {
+      weight: null,
+      reps: repMin,
+      variation,
+      variationIndex: vi,
+      reason: `Llegaste a la variación más difícil («${variation}») y dominas ${repMax} reps. Por encima de ~15 reps la tensión por rep baja: es el momento ideal para empezar a agregar carga externa.`,
+      kind: 'add_weight',
+    };
+  }
+
+  let reps = Math.min(workReps + 1, repMax);
+  let reason = `Mantén «${variation}» y suma reps hasta llegar a ${repMax} en todas las series.`;
+  if (avgRir !== null && avgRir >= 3) {
+    reps = repMax;
+    reason = `Tu esfuerzo fue bajo (RIR ${avgRir}): sube directo a ${repMax} reps en todas las series.`;
+  } else if (avgRir !== null && avgRir < 1) {
+    reason += ` Estás llegando al fallo siempre (RIR ${avgRir}): deja 1-2 reps en reserva.`;
+  }
+  return {
+    weight: null,
+    reps,
+    variation,
+    variationIndex: vi,
+    reason,
+    kind: 'add_reps',
+  };
+}
+
 function suggestionFor(ex, ignoreDeload = false) {
   if (ex.isometric) return isoSuggestionFor(ex, ignoreDeload);
+  if (ex.mode === 'bodyweight') return bodyweightSuggestionFor(ex, ignoreDeload);
   const sessions = ex.sessions || [];
   if (sessions.length === 0) {
     return {
@@ -546,12 +754,13 @@ function suggestionFor(ex, ignoreDeload = false) {
 
 function normalizeExercise(ex) {
   const isometric = ex?.isometric === true;
+  const mode = ex?.mode === 'bodyweight' ? 'bodyweight' : 'weighted';
   const repMin = Number.isFinite(Number(ex?.repMin)) && Number(ex.repMin) >= 1
     ? Math.floor(Number(ex.repMin))
-    : 3;
+    : (mode === 'bodyweight' ? 8 : 3);
   const repMax = Number.isFinite(Number(ex?.repMax)) && Number(ex.repMax) >= repMin
     ? Math.floor(Number(ex.repMax))
-    : Math.max(repMin, 5);
+    : Math.max(repMin, mode === 'bodyweight' ? 12 : 5);
   const incrementKg = Number.isFinite(Number(ex?.incrementKg)) && Number(ex.incrementKg) > 0
     ? round1(Number(ex.incrementKg))
     : 2.5;
@@ -564,27 +773,49 @@ function normalizeExercise(ex) {
   const timeIncrement = Number.isFinite(Number(ex?.timeIncrement)) && Number(ex.timeIncrement) > 0
     ? round1(Number(ex.timeIncrement))
     : 5;
+  const ladder = Array.isArray(ex?.ladder) && ex.ladder.length > 0
+    ? ex.ladder
+    : (mode === 'bodyweight' ? ladderFor(ex?.name) : null);
+  const variationIndex = Number.isFinite(Number(ex?.variationIndex))
+    ? Math.max(0, Math.floor(Number(ex.variationIndex)))
+    : 0;
   const sessions = Array.isArray(ex?.sessions)
     ? ex.sessions.map((s) => ({
         ts: Number(s?.ts) || Date.now(),
+        variationIndex: Number.isFinite(Number(s?.variationIndex)) ? Math.floor(Number(s.variationIndex)) : variationIndex,
         sets: Array.isArray(s?.sets)
           ? s.sets
-              .filter((st) => st && Number.isFinite(Number(st.weight)) && (isometric ? Number.isFinite(Number(st.time)) : Number.isFinite(Number(st.reps))))
-              .map((st) => isometric
-                ? { weight: round1(Number(st.weight)), time: Math.floor(Number(st.time)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 }
-                : { weight: round1(Number(st.weight)), reps: Math.floor(Number(st.reps)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 })
+              .filter((st) => {
+                if (!st) return false;
+                if (mode === 'bodyweight') return Number.isFinite(Number(st.reps));
+                if (isometric) return Number.isFinite(Number(st.weight)) && Number.isFinite(Number(st.time));
+                return Number.isFinite(Number(st.weight)) && Number.isFinite(Number(st.reps));
+              })
+              .map((st) => {
+                if (mode === 'bodyweight') {
+                  return { reps: Math.floor(Number(st.reps)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 };
+                }
+                if (isometric) {
+                  return { weight: round1(Number(st.weight)), time: Math.floor(Number(st.time)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 };
+                }
+                return { weight: round1(Number(st.weight)), reps: Math.floor(Number(st.reps)), rir: Number.isFinite(Number(st.rir)) ? Number(st.rir) : 0 };
+              })
           : [],
       }))
+        .filter((s) => s.sets.length > 0)
     : [];
   return {
     ...ex,
     isometric,
+    mode,
     repMin,
     repMax,
     incrementKg,
     timeMin,
     timeMax,
     timeIncrement,
+    ladder,
+    variationIndex,
     muscle: MUSCLE_GROUPS.includes(ex?.muscle) ? ex.muscle : 'Pecho',
     sessions,
   };
@@ -838,6 +1069,8 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recsOn, setRecsOn] = useState(true);
+  const [calibrationDismissed, setCalibrationDismissed] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -847,6 +1080,14 @@ export default function App() {
           applyTheme(true);
           setDark(true);
         }
+      } catch (_) {}
+      try {
+        const rec = await AsyncStorage.getItem(RECOMMENDATIONS_KEY);
+        if (rec === 'false') setRecsOn(false);
+      } catch (_) {}
+      try {
+        const cal = await AsyncStorage.getItem(CALIBRATION_KEY);
+        if (cal === 'true') setCalibrationDismissed(true);
       } catch (_) {}
     })();
   }, []);
@@ -893,6 +1134,28 @@ export default function App() {
     setDark(next);
     try {
       AsyncStorage.setItem(THEME_KEY, JSON.stringify(next));
+    } catch (_) {}
+  }
+
+  function toggleRecs(next) {
+    setRecsOn(next);
+    try {
+      AsyncStorage.setItem(RECOMMENDATIONS_KEY, JSON.stringify(next));
+    } catch (_) {}
+  }
+
+  function dismissCalibration() {
+    setCalibrationDismissed(true);
+    try {
+      AsyncStorage.setItem(CALIBRATION_KEY, 'true');
+    } catch (_) {}
+  }
+
+  function reactivateRecommendations() {
+    setRecsOn(true);
+    setCalibrationDismissed(false);
+    try {
+      AsyncStorage.multiRemove([RECOMMENDATIONS_KEY, CALIBRATION_KEY, DELOAD_DISMISS_KEY]);
     } catch (_) {}
   }
 
@@ -987,7 +1250,11 @@ export default function App() {
           <TabataScreen />
         </View>
         <View style={[styles.view, { display: activeTab === 'progresion' ? 'flex' : 'none' }]}>
-          <ProgresionScreen />
+          <ProgresionScreen
+            recsOn={recsOn}
+            calibrationDismissed={calibrationDismissed}
+            onDismissCalibration={dismissCalibration}
+          />
         </View>
         <View style={[styles.view, { display: activeTab === 'notas' ? 'flex' : 'none' }]}>
           <NotesScreen />
@@ -1008,6 +1275,9 @@ export default function App() {
             onToggleDark={toggleDark}
             onLogout={() => supabase.auth.signOut()}
             userEmail={session && session.user ? session.user.email : ''}
+            recsOn={recsOn}
+            onToggleRecs={toggleRecs}
+            onReactivateRecommendations={reactivateRecommendations}
           />
         </View>
       </View>
@@ -2425,7 +2695,7 @@ const GLOSARIO_TERMS = [
   },
 ];
 
-function ProgresionScreen() {
+function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }) {
   const [exercises, setExercises] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [showForm, setShowForm] = useState(false);
@@ -2435,13 +2705,15 @@ function ProgresionScreen() {
   const [formRepRange, setFormRepRange] = useState('3-5');
   const [formIncrement, setFormIncrement] = useState('2.5');
   const [formIsometric, setFormIsometric] = useState(false);
+  const [formMode, setFormMode] = useState('weighted');
+  const [formVariation, setFormVariation] = useState(0);
   const [formTimeRange, setFormTimeRange] = useState('20-30');
   const [formTimeIncrement, setFormTimeIncrement] = useState('5');
   const [formError, setFormError] = useState('');
   const [deloadOffer, setDeloadOffer] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [calibrationOffer, setCalibrationOffer] = useState(null);
-  const [noAskCalibration, setNoAskCalibration] = useState(false);
+  const [addWeightOffer, setAddWeightOffer] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -2456,10 +2728,6 @@ function ProgresionScreen() {
         const seeded = {};
         arr.forEach((ex) => { seeded[ex.id] = seedDraft(ex); });
         setDrafts(seeded);
-      } catch (_) {}
-      try {
-        const flag = await AsyncStorage.getItem(CALIBRATION_KEY);
-        if (flag === 'true') setNoAskCalibration(true);
       } catch (_) {}
     })();
   }, []);
@@ -2503,6 +2771,8 @@ function ProgresionScreen() {
     setFormRepRange('3-5');
     setFormIncrement('2.5');
     setFormIsometric(false);
+    setFormMode('weighted');
+    setFormVariation(0);
     setFormTimeRange('20-30');
     setFormTimeIncrement('5');
     setFormError('');
@@ -2540,6 +2810,28 @@ function ProgresionScreen() {
         timeIncrement: Number.isFinite(timeInc) && timeInc > 0 ? round1(timeInc) : 5,
         sessions: [],
       };
+    } else if (formMode === 'bodyweight') {
+      const range = parseRepRange(formRepRange);
+      if (!range) {
+        setFormError('El rango de reps debe ser como "8-12" (mínimo-máximo).');
+        return;
+      }
+      const ladder = ladderFor(name);
+      const vi = Math.min(Math.max(Number(formVariation) || 0, 0), ladder.length - 1);
+      ex = {
+        id: makeId(),
+        name,
+        goal: formGoal,
+        muscle: formMuscle,
+        isometric: false,
+        mode: 'bodyweight',
+        repMin: range.min,
+        repMax: range.max,
+        incrementKg: 2.5,
+        ladder,
+        variationIndex: vi,
+        sessions: [],
+      };
     } else {
       const range = parseRepRange(formRepRange);
       const inc = Number(formIncrement);
@@ -2553,6 +2845,7 @@ function ProgresionScreen() {
         goal: formGoal,
         muscle: formMuscle,
         isometric: false,
+        mode: 'weighted',
         repMin: range.min,
         repMax: range.max,
         incrementKg: Number.isFinite(inc) && inc > 0 ? round1(inc) : 2.5,
@@ -2567,7 +2860,7 @@ function ProgresionScreen() {
     });
     setDrafts((prev) => ({ ...prev, [ex.id]: seedDraft(ex) }));
     resetForm();
-    if (!noAskCalibration && !ex.isometric) {
+    if (recsOn && !calibrationDismissed && !ex.isometric && ex.mode !== 'bodyweight') {
       setCalibrationOffer({ exerciseId: ex.id, goal: ex.goal, repMin: ex.repMin, repMax: ex.repMax, incrementKg: ex.incrementKg });
     }
   }
@@ -2583,10 +2876,7 @@ function ProgresionScreen() {
   }
 
   function dontAskCalibration() {
-    setNoAskCalibration(true);
-    try {
-      AsyncStorage.setItem(CALIBRATION_KEY, 'true');
-    } catch (_) {}
+    onDismissCalibration();
   }
 
   function deleteExercise(id) {
@@ -2602,10 +2892,54 @@ function ProgresionScreen() {
     });
   }
 
+  function setExerciseVariation(id, variationIndex) {
+    setExercises((prev) => {
+      const next = prev.map((e) => {
+        if (e.id !== id) return e;
+        const ladder = Array.isArray(e.ladder) && e.ladder.length > 0 ? e.ladder : BODYWEIGHT_GENERIC.slice();
+        const vi = Math.min(Math.max(Number(variationIndex) || 0, 0), ladder.length - 1);
+        return { ...e, variationIndex: vi };
+      });
+      persistExercises(next);
+      return next;
+    });
+  }
+
+  function convertToWeighted(id, startWeight) {
+    setExercises((prev) => {
+      const next = prev.map((e) => (e.id === id ? { ...e, mode: 'weighted' } : e));
+      persistExercises(next);
+      return next;
+    });
+    setDrafts((prev) => {
+      const cur = prev[id] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
+      return { ...prev, [id]: { ...cur, weight: startWeight != null ? String(startWeight) : '', reps: '' } };
+    });
+    setAddWeightOffer(null);
+  }
+
   function addSet(ex) {
     const d = draftOf(ex.id);
-    const weight = parseFloat(d.weight);
     const rir = d.rir;
+
+    if (ex.mode === 'bodyweight') {
+      const reps = parseInt(d.reps, 10);
+      if (!Number.isFinite(reps) || reps < 1) {
+        updateDraft(ex.id, { error: 'Ingresa una cantidad de reps válida.' });
+        return;
+      }
+      const set = { reps, rir };
+      setDrafts((prev) => {
+        const cur = prev[ex.id] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
+        return {
+          ...prev,
+          [ex.id]: { ...cur, reps: '', rir, sets: [...cur.sets, set], error: '' },
+        };
+      });
+      return;
+    }
+
+    const weight = parseFloat(d.weight);
     if (!Number.isFinite(weight) || weight <= 0) {
       updateDraft(ex.id, { error: 'Ingresa un peso válido (kg).' });
       return;
@@ -2649,6 +2983,7 @@ function ProgresionScreen() {
     const d = draftOf(ex.id);
     if (!d.sets || d.sets.length === 0) return;
     const session = { ts: Date.now(), sets: d.sets };
+    if (ex.mode === 'bodyweight') session.variationIndex = ex.variationIndex;
     const updatedEx = { ...ex, sessions: [...ex.sessions, session] };
     setExercises((prev) => {
       const next = prev.map((e) => (e.id === ex.id ? updatedEx : e));
@@ -2657,12 +2992,18 @@ function ProgresionScreen() {
     });
     setDrafts((prev) => ({ ...prev, [ex.id]: seedDraft(updatedEx) }));
 
+    if (!recsOn) return;
     const nextSug = suggestionFor(updatedEx);
-    if (nextSug.kind === 'deload') {
+    if (nextSug.kind === 'add_weight') {
+      setAddWeightOffer({ exerciseId: ex.id, variation: nextSug.variation, reps: nextSug.reps });
+    } else if (nextSug.kind === 'deload') {
       setDeloadOffer({
         exerciseId: ex.id,
+        mode: ex.mode,
         weight: nextSug.weight,
         value: updatedEx.isometric ? nextSug.time : nextSug.reps,
+        variation: nextSug.variation || null,
+        variationIndex: nextSug.variationIndex ?? null,
         isometric: updatedEx.isometric,
       });
     }
@@ -2670,14 +3011,22 @@ function ProgresionScreen() {
 
   function acceptDeload() {
     if (!deloadOffer) return;
-    const { exerciseId, weight, value, isometric } = deloadOffer;
-    setDrafts((prev) => {
-      const cur = prev[exerciseId] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
-      const patch = isometric
-        ? { weight: String(weight), time: String(value) }
-        : { weight: String(weight), reps: String(value) };
-      return { ...prev, [exerciseId]: { ...cur, ...patch } };
-    });
+    const { exerciseId, weight, value, isometric, mode, variationIndex } = deloadOffer;
+    if (mode === 'bodyweight') {
+      if (Number.isFinite(Number(variationIndex))) setExerciseVariation(exerciseId, Number(variationIndex));
+      setDrafts((prev) => {
+        const cur = prev[exerciseId] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
+        return { ...prev, [exerciseId]: { ...cur, reps: String(value) } };
+      });
+    } else {
+      setDrafts((prev) => {
+        const cur = prev[exerciseId] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
+        const patch = isometric
+          ? { weight: String(weight), time: String(value) }
+          : { weight: String(weight), reps: String(value) };
+        return { ...prev, [exerciseId]: { ...cur, ...patch } };
+      });
+    }
     setDeloadOffer(null);
   }
 
@@ -2764,21 +3113,21 @@ function ProgresionScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Tipo de ejercicio</Text>
+              <Text style={styles.fieldLabel}>Tipo de carga</Text>
               <View style={styles.chipRow}>
                 {[
-                  { key: false, label: 'Con reps' },
-                  { key: true, label: 'Isométrico' },
+                  { key: 'weighted', label: 'Con peso' },
+                  { key: 'bodyweight', label: 'Peso corporal' },
                 ].map((opt) => (
                   <TouchableOpacity
-                    key={String(opt.key)}
-                    style={[styles.goalChip, formIsometric === opt.key && styles.goalChipActive]}
-                    onPress={() => setFormIsometric(opt.key)}
+                    key={opt.key}
+                    style={[styles.goalChip, formMode === opt.key && styles.goalChipActive]}
+                    onPress={() => { setFormMode(opt.key); setFormIsometric(false); }}
                   >
                     <Text
                       style={[
                         styles.goalChipText,
-                        formIsometric === opt.key && styles.goalChipTextActive,
+                        formMode === opt.key && styles.goalChipTextActive,
                       ]}
                     >
                       {opt.label}
@@ -2787,13 +3136,99 @@ function ProgresionScreen() {
                 ))}
               </View>
               <Text style={styles.fieldHint}>
-                {formIsometric
-                  ? 'Isométrico: mantienes una posición fija y registras el tiempo de trabajo.'
-                  : 'Con reps: registras repeticiones por serie.'}
+                {formMode === 'bodyweight'
+                  ? 'Peso corporal: progresa con repeticiones y variaciones más difíciles, sin registrar kilos.'
+                  : 'Con peso: registras carga en kg por serie.'}
               </Text>
             </View>
 
-            {formIsometric ? (
+            {formMode === 'weighted' ? (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Tipo de ejercicio</Text>
+                <View style={styles.chipRow}>
+                  {[
+                    { key: false, label: 'Con reps' },
+                    { key: true, label: 'Isométrico' },
+                  ].map((opt) => (
+                    <TouchableOpacity
+                      key={String(opt.key)}
+                      style={[styles.goalChip, formIsometric === opt.key && styles.goalChipActive]}
+                      onPress={() => setFormIsometric(opt.key)}
+                    >
+                      <Text
+                        style={[
+                          styles.goalChipText,
+                          formIsometric === opt.key && styles.goalChipTextActive,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.fieldHint}>
+                  {formIsometric
+                    ? 'Isométrico: mantienes una posición fija y registras el tiempo de trabajo.'
+                    : 'Con reps: registras repeticiones por serie.'}
+                </Text>
+              </View>
+            ) : null}
+
+            {formMode === 'bodyweight' ? (
+              <>
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Variación inicial</Text>
+                  <View style={styles.chipRow}>
+                    {ladderFor(formName).map((step, i) => (
+                      <TouchableOpacity
+                        key={step}
+                        style={[styles.goalChip, formVariation === i && styles.goalChipActive]}
+                        onPress={() => setFormVariation(i)}
+                      >
+                        <Text
+                          style={[
+                            styles.goalChipText,
+                            formVariation === i && styles.goalChipTextActive,
+                          ]}
+                        >
+                          {step}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.fieldHint}>
+                    Elegí la variación con la que partes hoy. La app te guiará a las siguientes.
+                  </Text>
+                </View>
+
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Rango de reps</Text>
+                  <View style={styles.chipRow}>
+                    {(REP_RANGE_PRESETS[formGoal] || []).map((range) => (
+                      <TouchableOpacity
+                        key={range}
+                        style={[styles.goalChip, formRepRange === range && styles.goalChipActive]}
+                        onPress={() => setFormRepRange(range)}
+                      >
+                        <Text
+                          style={[
+                            styles.goalChipText,
+                            formRepRange === range && styles.goalChipTextActive,
+                          ]}
+                        >
+                          {range}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.fieldHint}>
+                    {formGoal === 'fuerza'
+                      ? 'Fuerza: 1-6 reps con una variación exigente.'
+                      : 'Hipertrofia: 6-15 reps por serie.'}
+                  </Text>
+                </View>
+              </>
+            ) : formIsometric ? (
               <>
                 <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Tiempo de trabajo (seg)</Text>
@@ -2898,7 +3333,24 @@ function ProgresionScreen() {
               onRemoveSet={(index) => removeSet(ex.id, index)}
               onFinish={() => finishSession(ex)}
               onDelete={() => setDeleteTarget(ex.id)}
-              onDeloadInfo={(weight, value, isometric) => setDeloadOffer({ exerciseId: ex.id, weight, value, isometric })}
+              onApplyVariation={(vi) => setExerciseVariation(ex.id, vi)}
+              onAddWeight={(id) => {
+                const s = suggestionFor(ex);
+                setAddWeightOffer({ exerciseId: id, variation: s.variation, reps: s.reps });
+              }}
+              recsOff={!recsOn}
+              onDeloadInfo={() => {
+                const s = suggestionFor(ex);
+                setDeloadOffer({
+                  exerciseId: ex.id,
+                  mode: ex.mode,
+                  weight: s.weight,
+                  value: ex.isometric ? s.time : s.reps,
+                  variation: s.variation || null,
+                  variationIndex: s.variationIndex ?? null,
+                  isometric: ex.isometric,
+                });
+              }}
             />
           ))
         )}
@@ -2915,16 +3367,24 @@ function ProgresionScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>¿Descarga (deload)?</Text>
             <Text style={styles.modalBody}>
-              {deloadOffer?.isometric
-                ? `Tu progreso se estancó. Una semana de descarga (bajar el tiempo a ${deloadOffer?.value}s) ayuda a recuperar la fatiga acumulada y volver más fuerte.`
-                : `Tu progreso se estancó. Una semana de descarga (bajar la carga a ${deloadOffer?.weight} kg) ayuda a recuperar la fatiga acumulada y volver más fuerte.`}
+              {deloadOffer?.mode === 'bodyweight'
+                ? (deloadOffer?.variation
+                    ? `Tu progreso se estancó. Vuelve a «${deloadOffer.variation}» una o dos sesiones para recuperar y luego reconstruye.`
+                    : 'Tu progreso se estancó. Baja el volumen (menos series o reps) una semana y reconstruye.')
+                : deloadOffer?.isometric
+                  ? `Tu progreso se estancó. Una semana de descarga (bajar el tiempo a ${deloadOffer?.value}s) ayuda a recuperar la fatiga acumulada y volver más fuerte.`
+                  : `Tu progreso se estancó. Una semana de descarga (bajar la carga a ${deloadOffer?.weight} kg) ayuda a recuperar la fatiga acumulada y volver más fuerte.`}
             </Text>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={[styles.btn, styles.modalGhost]} onPress={declineDeload}>
                 <Text style={styles.btnGhostText}>No, continuar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.btnPrimary, styles.modalPrimary]} onPress={acceptDeload}>
-                <Text style={styles.btnPrimaryText}>{deloadOffer?.isometric ? 'Sí, ajustar tiempo' : 'Sí, ajustar carga'}</Text>
+                <Text style={styles.btnPrimaryText}>
+                  {deloadOffer?.mode === 'bodyweight'
+                    ? (deloadOffer?.variation ? 'Sí, bajar variación' : 'Sí, ajustar')
+                    : deloadOffer?.isometric ? 'Sí, ajustar tiempo' : 'Sí, ajustar carga'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2955,6 +3415,34 @@ function ProgresionScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={!!addWeightOffer}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddWeightOffer(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Nivel avanzado alcanzado</Text>
+            <Text style={styles.modalBody}>
+              {`Dominaste «${addWeightOffer?.variation}» (${addWeightOffer?.reps} reps en todas las series). `}
+              La evidencia muestra que, al dominar la variación más difícil de tu escalera, agregar carga externa es más eficiente para seguir progresando en fuerza y masa muscular. ¿Querés empezar a agregar peso a este ejercicio?
+            </Text>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={[styles.btn, styles.modalGhost]} onPress={() => setAddWeightOffer(null)}>
+                <Text style={styles.btnGhostText}>Seguir sin peso</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnPrimary, styles.modalPrimary]}
+                onPress={() => convertToWeighted(addWeightOffer.exerciseId, '')}
+              >
+                <Text style={styles.btnPrimaryText}>Cambiar a con peso</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <CalibrationModal
         visible={!!calibrationOffer}
         goal={calibrationOffer?.goal}
@@ -2969,11 +3457,12 @@ function ProgresionScreen() {
   );
 }
 
-function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinish, onDelete, onDeloadInfo }) {
+function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinish, onDelete, onDeloadInfo, onApplyVariation, onAddWeight, recsOff }) {
   const [collapsed, setCollapsed] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const sug = suggestionFor(exercise);
   const iso = exercise.isometric === true;
+  const bw = exercise.mode === 'bodyweight';
   const weightVal = draft.weight;
   const repsVal = draft.reps;
   const timeVal = draft.time;
@@ -2982,7 +3471,9 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
 
   const sessions = exercise.sessions || [];
   const hasChart = !iso && sessions.length >= 2;
-  const recent = hasChart ? sessions.slice(-6).map((s) => bestE1RM(s)) : [];
+  const recent = hasChart
+    ? sessions.slice(-6).map((s) => (bw ? bodyweightBestReps(s) : bestE1RM(s)))
+    : [];
   const chartMax = recent.length > 0 ? Math.max(...recent) : 0;
   const fullHistory = sessions.slice().reverse().map((s) => ({
     ts: s.ts,
@@ -2991,6 +3482,8 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
     vol: sessionVolume(s),
     setCount: s.sets.length,
     firstReps: s.sets[0]?.reps ?? 0,
+    bestReps: bodyweightBestReps(s),
+    variation: s.variationIndex,
   }));
 
   let lastSummary = null;
@@ -3007,7 +3500,29 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
     const avgRir = lastAvgRir(last);
     block = blockInfo(exercise);
 
-    if (iso) {
+    if (bw) {
+      const bestReps = bodyweightBestReps(last);
+      const ladder = Array.isArray(exercise.ladder) && exercise.ladder.length > 0 ? exercise.ladder : BODYWEIGHT_GENERIC;
+      const variationName = ladder[exercise.variationIndex] || 'Variación actual';
+      lastSummary = `${setCount}×${bestReps} reps · ${variationName}${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
+      isStall = bodyweightStalled(exercise);
+      if (sessions.length === 1) {
+        historyNote = 'Primera sesión: ya tienes tu punto de partida.';
+      } else {
+        const prev = sessions[sessions.length - 2];
+        const prevBest = bodyweightBestReps(prev);
+        const prevVar = bodyweightSessionVariation(prev, exercise.variationIndex);
+        const curVar = bodyweightSessionVariation(last, exercise.variationIndex);
+        if (curVar > prevVar) {
+          historyNote = 'Avanzaste a una variación más difícil: sigue sumando reps.';
+        } else if (bestReps > prevBest) {
+          historyNote = `Sumaste reps: de ${prevBest} a ${bestReps}.`;
+        } else {
+          historyNote = 'Mantén la variación y sigue sumando reps.';
+        }
+      }
+      historyNote += ` Próximo objetivo: ${sug.reps} reps.`;
+    } else if (iso) {
       const firstTime = last.sets[0]?.time ?? 0;
       lastSummary = `${setCount}×${firstTime}s @ ${firstWeight} kg${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
       isStall = isoStalled(exercise);
@@ -3098,6 +3613,11 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
                 <Text style={styles.muscleBadgeText}>Isométrico</Text>
               </View>
             ) : null}
+            {bw ? (
+              <View style={styles.muscleBadge}>
+                <Text style={styles.muscleBadgeText}>Peso corporal</Text>
+              </View>
+            ) : null}
           </View>
           <Text style={styles.chevron}>{collapsed ? '▸' : '▾'}</Text>
         </TouchableOpacity>
@@ -3108,37 +3628,81 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
 
       {!collapsed ? (
         <>
-      <View style={styles.sugBox}>
-        <Text style={styles.sugLine}>
-          {sug.weight !== null
-            ? iso
-              ? `${sug.weight} kg × ${sug.time}s`
-              : `${sug.weight} kg × ${sug.reps} reps`
-            : iso
-              ? `Primera sesión: elige un peso y mantén la posición ${exercise.timeMin}s`
-              : `Primera sesión: elige un peso y haz ${exercise.repMin} reps`}
-        </Text>
-        <Text style={styles.sugReason}>{sug.reason}</Text>
-        {sug.kind === 'deload' ? (
-          <TouchableOpacity style={styles.linkBtn} onPress={() => onDeloadInfo(sug.weight, iso ? sug.time : sug.reps, iso)}>
-            <Text style={styles.linkBtnText}>Ver por qué descargar</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      {recsOff ? (
+        <View style={styles.sugBox}>
+          <Text style={styles.sugReason}>Recomendaciones desactivadas. Reactívalas en Ajustes.</Text>
+        </View>
+      ) : (
+        <View style={styles.sugBox}>
+          <Text style={styles.sugLine}>
+            {bw
+              ? `«${sug.variation}» × ${sug.reps} reps`
+              : sug.weight !== null
+                ? iso
+                  ? `${sug.weight} kg × ${sug.time}s`
+                  : `${sug.weight} kg × ${sug.reps} reps`
+                : iso
+                  ? `Primera sesión: elige un peso y mantén la posición ${exercise.timeMin}s`
+                  : `Primera sesión: elige un peso y haz ${exercise.repMin} reps`}
+          </Text>
+          <Text style={styles.sugReason}>{sug.reason}</Text>
+          {sug.kind === 'advance_variation' ? (
+            <TouchableOpacity style={styles.linkBtn} onPress={() => onApplyVariation(sug.variationIndex)}>
+              <Text style={styles.linkBtnText}>{`Cambiar a: ${sug.variation}`}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {sug.kind === 'add_weight' ? (
+            <TouchableOpacity style={styles.linkBtn} onPress={() => onAddWeight(exercise.id)}>
+              <Text style={styles.linkBtnText}>Empezar a agregar peso</Text>
+            </TouchableOpacity>
+          ) : null}
+          {sug.kind === 'deload' ? (
+            <TouchableOpacity style={styles.linkBtn} onPress={onDeloadInfo}>
+              <Text style={styles.linkBtnText}>Ver por qué descargar</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
+
+      {bw ? (
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Variación actual</Text>
+          <View style={styles.chipRow}>
+            {(Array.isArray(exercise.ladder) && exercise.ladder.length > 0 ? exercise.ladder : BODYWEIGHT_GENERIC).map((step, i) => (
+              <TouchableOpacity
+                key={step}
+                style={[styles.goalChip, exercise.variationIndex === i && styles.goalChipActive]}
+                onPress={() => onApplyVariation(i)}
+              >
+                <Text
+                  style={[
+                    styles.goalChipText,
+                    exercise.variationIndex === i && styles.goalChipTextActive,
+                  ]}
+                >
+                  {step}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Registrar serie</Text>
       <View style={styles.inputRow}>
-        <View style={styles.inputCol}>
-          <Text style={styles.inputUnitLabel}>Peso (kg)</Text>
-          <TextInput
-            style={styles.input}
-            value={weightVal}
-            onChangeText={(t) => onField({ weight: t.replace(/[^0-9.]/g, '') })}
-            keyboardType="decimal-pad"
-            placeholder="0"
-            placeholderTextColor="#9ca3af"
-          />
-        </View>
+        {!bw ? (
+          <View style={styles.inputCol}>
+            <Text style={styles.inputUnitLabel}>Peso (kg)</Text>
+            <TextInput
+              style={styles.input}
+              value={weightVal}
+              onChangeText={(t) => onField({ weight: t.replace(/[^0-9.]/g, '') })}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+        ) : null}
         <View style={styles.inputCol}>
           <Text style={styles.inputUnitLabel}>{iso ? 'Tiempo (seg)' : 'Reps'}</Text>
           <TextInput
@@ -3183,7 +3747,9 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           {sets.map((s, i) => (
             <View key={i} style={styles.seriesRow}>
               <Text style={styles.seriesText}>
-                Serie {i + 1}: {s.weight} kg × {iso ? `${s.time}s` : s.reps} (RIR {rirLabel(s.rir)})
+                {bw
+                  ? `Serie ${i + 1}: ${s.reps} reps (RIR ${rirLabel(s.rir)})`
+                  : `Serie ${i + 1}: ${s.weight} kg × ${iso ? `${s.time}s` : s.reps} (RIR ${rirLabel(s.rir)})`}
               </Text>
               <TouchableOpacity style={styles.btnSmallGhost} onPress={() => onRemoveSet(i)}>
                 <Text style={styles.btnSmallGhostText}>Quitar</Text>
@@ -3205,18 +3771,20 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           {isPR ? <Text style={styles.prText}>🏆 Nuevo PR de e1RM</Text> : null}
           {isStall ? (
             <Text style={styles.stallText}>
-              {iso
-                ? `Posible estancamiento: descarga el tiempo de trabajo a ${round1(isoBestTime(exercise.sessions[exercise.sessions.length - 1]) * 0.9)}s y reconstruye.`
-                : `Posible estancamiento: descarga a ${round1(firstSetWeight(exercise.sessions[exercise.sessions.length - 1]) * 0.9)} kg y reconstruye.`}
+              {bw
+                ? 'Posible estancamiento: vuelve a una variación más fácil una o dos sesiones y reconstruye.'
+                : iso
+                  ? `Posible estancamiento: descarga el tiempo de trabajo a ${round1(isoBestTime(exercise.sessions[exercise.sessions.length - 1]) * 0.9)}s y reconstruye.`
+                  : `Posible estancamiento: descarga a ${round1(firstSetWeight(exercise.sessions[exercise.sessions.length - 1]) * 0.9)} kg y reconstruye.`}
             </Text>
           ) : null}
-          <Text style={styles.historyMeta}>Bloque actual: sesión {block.sessionsInBlock}</Text>
-          {block.deloadSuggested ? (
+          {!bw ? <Text style={styles.historyMeta}>Bloque actual: sesión {block.sessionsInBlock}</Text> : null}
+          {!bw && block.deloadSuggested ? (
             <Text style={styles.stallText}>
               Fin de bloque sugerido: considera una semana de descarga (~90% de carga).
             </Text>
           ) : null}
-          {prs.e1rm.v > 0 ? (
+          {!bw && prs.e1rm.v > 0 ? (
             <View style={styles.prBox}>
               <Text style={styles.historyTitle}>Mejor marca</Text>
               <Text style={styles.historyMeta}>
@@ -3251,7 +3819,9 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
                     <View key={h.ts} style={styles.historyItem}>
                       <Text style={styles.historyDate}>{shortDate(h.ts)}</Text>
                       <Text style={styles.historyItemText}>
-                        {h.setCount}×{h.firstReps} @ {h.weight} kg · e1RM {h.e1rm} kg · Vol {h.vol} kg
+                        {bw
+                          ? `${h.setCount} series · ${h.bestReps} reps máx`
+                          : `${h.setCount}×${h.firstReps} @ ${h.weight} kg · e1RM ${h.e1rm} kg · Vol ${h.vol} kg`}
                       </Text>
                     </View>
                   ))}
@@ -3284,9 +3854,14 @@ function GlosarioScreen() {
   );
 }
 
-function AjustesScreen({ dark, onToggleDark, onLogout, userEmail }) {
+function AjustesScreen({ dark, onToggleDark, onLogout, userEmail, recsOn, onToggleRecs, onReactivateRecommendations }) {
   const [status, setStatus] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
+
+  function reactivateRecommendations() {
+    onReactivateRecommendations();
+    setStatus('Mensajes de recomendaciones reactivados.');
+  }
 
   async function resetAll() {
     if (!confirmReset) {
@@ -3328,6 +3903,23 @@ function AjustesScreen({ dark, onToggleDark, onLogout, userEmail }) {
           <View style={[styles.switch, dark && styles.switchOn]}>
             <View style={[styles.switchKnob, dark && styles.switchKnobOn]} />
           </View>
+        </TouchableOpacity>
+
+        <Text style={[styles.fieldLabel, styles.topGap]}>Recomendaciones</Text>
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={() => onToggleRecs(!recsOn)}
+        >
+          <View style={styles.settingTextWrap}>
+            <Text style={styles.settingTitle}>Mostrar recomendaciones</Text>
+            <Text style={styles.settingHint}>Sugerencias de progresión, descarga y punto de partida.</Text>
+          </View>
+          <View style={[styles.switch, recsOn && styles.switchOn]}>
+            <View style={[styles.switchKnob, recsOn && styles.switchKnobOn]} />
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.btn, styles.logoutBtn]} onPress={reactivateRecommendations}>
+          <Text style={styles.logoutBtnText}>Reactivar mensajes desactivados</Text>
         </TouchableOpacity>
 
         <Text style={[styles.fieldLabel, styles.topGap]}>Sesión</Text>
@@ -3483,6 +4075,7 @@ function PerfilScreen({ user, active, onLogout }) {
   const [hiitWeek, setHiitWeek] = useState(0);
   const [radar, setRadar] = useState([]);
   const [hasData, setHasData] = useState(false);
+  const [weekTotals, setWeekTotals] = useState([0, 0, 0, 0]);
 
   const [editing, setEditing] = useState(false);
   const [editFirst, setEditFirst] = useState(first);
@@ -3514,11 +4107,13 @@ function PerfilScreen({ user, active, onLogout }) {
           ? parsed.exercises.map((ex) => normalizeExercise(ex))
           : [];
         const now = Date.now();
+        const WEEK = 7 * 24 * 60 * 60 * 1000;
         const curStart = startOfWeek(now);
-        const prevStart = curStart - 7 * 24 * 60 * 60 * 1000;
-        const curEnd = curStart + 7 * 24 * 60 * 60 * 1000;
 
         const byMuscle = {};
+        const weekTotals = [0, 0, 0, 0]; // 0 = esta semana, 1..3 = semanas previas
+        const weekMuscle = [{}, {}, {}, {}];
+
         for (const ex of arr) {
           const muscle = MUSCLE_GROUPS.includes(ex.muscle) ? ex.muscle : 'Pecho';
           const sessions = ex.sessions || [];
@@ -3527,12 +4122,21 @@ function PerfilScreen({ user, active, onLogout }) {
             if (!Number.isFinite(ts)) continue;
             const e = bestE1RM(s);
             if (e <= 0) continue;
-            const isCur = ts >= curStart && ts < curEnd;
-            const isPrev = ts >= prevStart && ts < curStart;
-            if (!isCur && !isPrev) continue;
+            const week = Math.floor((ts - curStart) / WEEK); // 0 = esta semana, negativos = previas
+            if (week > 0 || week < -4) continue;
+
             if (!byMuscle[muscle]) byMuscle[muscle] = { cur: 0, prev: 0 };
-            if (isCur) byMuscle[muscle].cur = Math.max(byMuscle[muscle].cur, e);
-            if (isPrev) byMuscle[muscle].prev = Math.max(byMuscle[muscle].prev, e);
+            if (week === 0) byMuscle[muscle].cur = Math.max(byMuscle[muscle].cur, e);
+            else byMuscle[muscle].prev = Math.max(byMuscle[muscle].prev, e);
+
+            const idx = -week;
+            if (idx <= 3) {
+              const prevMax = weekMuscle[idx][muscle] || 0;
+              if (e > prevMax) {
+                weekMuscle[idx][muscle] = e;
+                weekTotals[idx] += e - prevMax;
+              }
+            }
           }
         }
         const data = MUSCLE_GROUPS.filter(
@@ -3550,6 +4154,7 @@ function PerfilScreen({ user, active, onLogout }) {
         if (mounted) {
           setRadar(data);
           setHasData(data.length > 0);
+          setWeekTotals(weekTotals);
         }
       } catch (_) {}
     })();
@@ -3694,9 +4299,18 @@ function PerfilScreen({ user, active, onLogout }) {
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: colors.ready }]} />
-                <Text style={styles.legendText}>Semana anterior</Text>
+                <Text style={styles.legendText}>Mejor de 4 semanas previas</Text>
               </View>
             </View>
+            <View style={styles.weekRow}>
+              {['Esta semana', 'Hace 1', 'Hace 2', 'Hace 3'].map((label, i) => (
+                <View key={label} style={styles.weekCard}>
+                  <Text style={styles.weekValue}>{Math.round(weekTotals[i])}</Text>
+                  <Text style={styles.weekLabel}>{label}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.weekHint}>Carga total (suma de e1RM por grupo muscular) de las últimas 4 semanas.</Text>
           </>
         ) : (
           <Text style={styles.notesEmpty}>
@@ -4948,6 +5562,40 @@ function makeStyles() {
     fontSize: 12,
     color: colors.muted,
     marginTop: 4,
+    textAlign: 'center',
+  },
+  weekRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  weekCard: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassCard,
+    backdropFilter: GLASS_BLUR,
+    alignItems: 'center',
+  },
+  weekValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  weekLabel: {
+    fontSize: 11,
+    color: colors.muted,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  weekHint: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 8,
     textAlign: 'center',
   },
   });
