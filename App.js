@@ -47,6 +47,9 @@ const ISO_TIME_PRESETS = ['10-20', '20-30', '30-45', '45-60'];
 
 const MUSCLE_GROUPS = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Antebrazos', 'Piernas', 'Core'];
 
+const DAYS = ['lunes', 'martes', 'miercoles', 'jueves'];
+const DAY_LABELS = { lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves' };
+
 // Clave de almacenamiento por cuenta: cada sesión de Supabase guarda sus ejercicios por separado.
 function storageKey(userId) {
   return PROGRESION_KEY + ':' + (userId || 'anon');
@@ -55,21 +58,21 @@ function storageKey(userId) {
 // Plan de fuerza referencial. Los pesos de partida son estimaciones para un hombre de ~77 kg,
 // principiante en pesas con base de boxeo/HIIT: ajústalos según técnica en tu primera sesión.
 const STRENGTH_PLAN = [
-  { name: 'Press de pecho con mancuernas', goal: 'fuerza', muscle: 'Pecho', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 12 },
-  { name: 'Press de hombros con mancuernas', goal: 'fuerza', muscle: 'Hombros', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
-  { name: 'Remo con mancuerna a una mano', goal: 'fuerza', muscle: 'Espalda', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 12 },
-  { name: 'Sentadilla goblet', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14 },
-  { name: 'Peso muerto rumano con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14 },
-  { name: 'Zancadas inversas con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10 },
-  { name: 'Step-up al banco con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10 },
-  { name: 'Curl de bíceps con mancuernas', goal: 'fuerza', muscle: 'Brazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
-  { name: 'Curl martillo', goal: 'fuerza', muscle: 'Antebrazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
-  { name: 'Extensión de tríceps tras nuca', goal: 'fuerza', muscle: 'Brazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
-  { name: 'Dominadas (o negativas)', goal: 'fuerza', muscle: 'Espalda', mode: 'bodyweight', repMin: 3, repMax: 5, incrementKg: 2.5 },
-  { name: 'Flexiones', goal: 'hipertrofia', muscle: 'Pecho', mode: 'bodyweight', repMin: 8, repMax: 12, incrementKg: 2.5 },
-  { name: 'Swing con pesa rusa', goal: 'hipertrofia', muscle: 'Piernas', mode: 'weighted', repMin: 10, repMax: 15, incrementKg: 2.5, startWeight: 10 },
-  { name: 'Plancha', goal: 'fuerza', muscle: 'Core', isometric: true, timeMin: 30, timeMax: 45, timeIncrement: 5, startWeight: 0 },
-  { name: 'Plancha lateral', goal: 'fuerza', muscle: 'Core', isometric: true, timeMin: 20, timeMax: 30, timeIncrement: 5, startWeight: 0 },
+  { name: 'Dominadas (o negativas)', goal: 'fuerza', muscle: 'Espalda', mode: 'bodyweight', repMin: 3, repMax: 5, incrementKg: 2.5, days: ['lunes', 'miercoles'] },
+  { name: 'Press de pecho con mancuernas', goal: 'fuerza', muscle: 'Pecho', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 12, days: ['lunes', 'miercoles'] },
+  { name: 'Press de hombros con mancuernas', goal: 'fuerza', muscle: 'Hombros', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8, days: ['lunes', 'miercoles'] },
+  { name: 'Remo con mancuerna a una mano', goal: 'fuerza', muscle: 'Espalda', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 12, days: ['lunes', 'miercoles'] },
+  { name: 'Curl de bíceps con mancuernas', goal: 'fuerza', muscle: 'Brazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8, days: ['lunes'] },
+  { name: 'Sentadilla goblet', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14, days: ['martes', 'jueves'] },
+  { name: 'Peso muerto rumano con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14, days: ['martes', 'jueves'] },
+  { name: 'Zancadas inversas con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10, days: ['martes'] },
+  { name: 'Step-up al banco con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10, days: ['martes'] },
+  { name: 'Plancha', goal: 'fuerza', muscle: 'Core', isometric: true, timeMin: 30, timeMax: 45, timeIncrement: 5, startWeight: 0, days: ['martes'] },
+  { name: 'Plancha lateral', goal: 'fuerza', muscle: 'Core', isometric: true, timeMin: 20, timeMax: 30, timeIncrement: 5, startWeight: 0, days: ['martes'] },
+  { name: 'Extensión de tríceps tras nuca', goal: 'fuerza', muscle: 'Brazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8, days: ['miercoles'] },
+  { name: 'Curl martillo', goal: 'fuerza', muscle: 'Antebrazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8, days: ['miercoles'] },
+  { name: 'Flexiones', goal: 'hipertrofia', muscle: 'Pecho', mode: 'bodyweight', repMin: 8, repMax: 12, incrementKg: 2.5, days: ['jueves'] },
+  { name: 'Swing con pesa rusa', goal: 'hipertrofia', muscle: 'Piernas', mode: 'weighted', repMin: 10, repMax: 15, incrementKg: 2.5, startWeight: 10, days: ['jueves'] },
 ];
 
 // Escaleras de progresión de peso corporal (calistenia). Ordenadas de fácil a difícil.
@@ -793,6 +796,9 @@ function normalizeExercise(ex) {
     startWeight: Number.isFinite(Number(ex?.startWeight)) && Number(ex.startWeight) >= 0
       ? round1(Number(ex.startWeight))
       : null,
+    days: Array.isArray(ex?.days) && ex.days.some((d) => DAYS.includes(d))
+      ? ex.days.filter((d) => DAYS.includes(d))
+      : DAYS.includes(ex?.day) ? [ex.day] : ['lunes'],
     muscle: MUSCLE_GROUPS.includes(ex?.muscle) ? ex.muscle : 'Pecho',
     sessions,
   };
@@ -2866,6 +2872,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   const [formIncrement, setFormIncrement] = useState('2.5');
   const [formIsometric, setFormIsometric] = useState(false);
   const [formMode, setFormMode] = useState('weighted');
+  const [formDays, setFormDays] = useState(['lunes']);
   const [formVariation, setFormVariation] = useState(0);
   const [formTimeRange, setFormTimeRange] = useState('20-30');
   const [formTimeIncrement, setFormTimeIncrement] = useState('5');
@@ -2876,6 +2883,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   const [addWeightOffer, setAddWeightOffer] = useState(null);
   const [confirmImport, setConfirmImport] = useState(false);
   const [importStatus, setImportStatus] = useState('');
+  const [collapsedDays, setCollapsedDays] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -2942,11 +2950,19 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
     setFormIncrement('2.5');
     setFormIsometric(false);
     setFormMode('weighted');
+    setFormDays(['lunes']);
     setFormVariation(0);
     setFormTimeRange('20-30');
     setFormTimeIncrement('5');
     setFormError('');
     setShowForm(false);
+  }
+
+  function toggleFormDay(day) {
+    setFormDays((prev) => {
+      if (prev.includes(day)) return prev.length > 1 ? prev.filter((d) => d !== day) : prev;
+      return [...prev, day];
+    });
   }
 
   function importStrengthPlan() {
@@ -2957,16 +2973,34 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
       return;
     }
     setConfirmImport(false);
-    const existing = new Set(exercises.map((e) => (e.name || '').trim().toLowerCase()));
-    const fresh = STRENGTH_PLAN
-      .filter((p) => !existing.has((p.name || '').trim().toLowerCase()))
-      .map((p) => normalizeExercise({ ...p, id: makeId(), sessions: [] }));
-    if (fresh.length === 0) {
+    const existingByName = {};
+    exercises.forEach((e) => { existingByName[(e.name || '').trim().toLowerCase()] = e; });
+    const fresh = [];
+    const patched = new Map();
+    STRENGTH_PLAN.forEach((p) => {
+      const key = (p.name || '').trim().toLowerCase();
+      const ex = existingByName[key];
+      const days = (p.days || []).filter((d) => DAYS.includes(d));
+      if (ex) {
+        const needsDays = !Array.isArray(ex.days) || !ex.days.some((d) => DAYS.includes(d));
+        const needsWeight = ex.startWeight == null && p.startWeight != null;
+        if (needsDays || needsWeight) {
+          patched.set(ex.id, {
+            ...ex,
+            days: needsDays ? days : ex.days,
+            startWeight: needsWeight ? p.startWeight : ex.startWeight,
+          });
+        }
+      } else {
+        fresh.push(normalizeExercise({ ...p, id: makeId(), sessions: [] }));
+      }
+    });
+    if (fresh.length === 0 && patched.size === 0) {
       setImportStatus('El plan ya estaba importado en tu cuenta.');
       return;
     }
     setExercises((prev) => {
-      const next = [...prev, ...fresh];
+      const next = prev.map((e) => patched.get(e.id) || e).concat(fresh);
       persistExercises(next);
       return next;
     });
@@ -2975,7 +3009,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
       fresh.forEach((ex) => { next[ex.id] = seedDraft(ex); });
       return next;
     });
-    setImportStatus(`Listo: ${fresh.length} ejercicios del plan de fuerza importados a tu cuenta.`);
+    setImportStatus(`Listo: plan de fuerza actualizado en tu cuenta (${fresh.length} nuevos, ${patched.size} con días asignados).`);
   }
 
   function chooseGoal(goal) {
@@ -3007,6 +3041,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         timeMin: timeRange.min,
         timeMax: timeRange.max,
         timeIncrement: Number.isFinite(timeInc) && timeInc > 0 ? round1(timeInc) : 5,
+        days: (formDays || []).filter((d) => DAYS.includes(d)),
         sessions: [],
       };
     } else if (formMode === 'bodyweight') {
@@ -3029,6 +3064,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         incrementKg: 2.5,
         ladder,
         variationIndex: vi,
+        days: (formDays || []).filter((d) => DAYS.includes(d)),
         sessions: [],
       };
     } else {
@@ -3048,6 +3084,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         repMin: range.min,
         repMax: range.max,
         incrementKg: Number.isFinite(inc) && inc > 0 ? round1(inc) : 2.5,
+        days: (formDays || []).filter((d) => DAYS.includes(d)),
         sessions: [],
       };
     }
@@ -3322,6 +3359,29 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
             </View>
 
             <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Días de la semana</Text>
+              <View style={styles.chipRow}>
+                {DAYS.map((day) => (
+                  <TouchableOpacity
+                    key={day}
+                    style={[styles.muscleChip, formDays.includes(day) && styles.goalChipActive]}
+                    onPress={() => toggleFormDay(day)}
+                  >
+                    <Text
+                      style={[
+                        styles.goalChipText,
+                        formDays.includes(day) && styles.goalChipTextActive,
+                      ]}
+                    >
+                      {DAY_LABELS[day]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.fieldHint}>Marca más de un día si repites el ejercicio en la semana.</Text>
+            </View>
+
+            <View style={styles.field}>
               <Text style={styles.fieldLabel}>Tipo de carga</Text>
               <View style={styles.chipRow}>
                 {[
@@ -3507,36 +3567,59 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
             No hay ejercicios todavía. Crea el primero con «+ Nuevo ejercicio».
           </Text>
         ) : (
-          exercises.map((ex) => (
-            <ExerciseCard
-              key={ex.id}
-              exercise={ex}
-              draft={draftOf(ex.id)}
-              onField={(patch) => updateDraft(ex.id, patch)}
-              onAddSet={() => addSet(ex)}
-              onRemoveSet={(index) => removeSet(ex.id, index)}
-              onFinish={() => finishSession(ex)}
-              onDelete={() => setDeleteTarget(ex.id)}
-              onApplyVariation={(vi) => setExerciseVariation(ex.id, vi)}
-              onAddWeight={(id) => {
-                const s = suggestionFor(ex);
-                setAddWeightOffer({ exerciseId: id, variation: s.variation, reps: s.reps });
-              }}
-              recsOff={!recsOn}
-              onDeloadInfo={() => {
-                const s = suggestionFor(ex);
-                setDeloadOffer({
-                  exerciseId: ex.id,
-                  mode: ex.mode,
-                  weight: s.weight,
-                  value: ex.isometric ? s.time : s.reps,
-                  variation: s.variation || null,
-                  variationIndex: s.variationIndex ?? null,
-                  isometric: ex.isometric,
-                });
-              }}
-            />
-          ))
+          DAYS.map((day) => {
+            const dayExs = exercises.filter((ex) => (ex.days || []).includes(day));
+            if (dayExs.length === 0) return null;
+            const collapsed = !!collapsedDays[day];
+            return (
+              <View key={day} style={styles.daySection}>
+                <TouchableOpacity
+                  style={styles.dayHeader}
+                  onPress={() => setCollapsedDays((prev) => ({ ...prev, [day]: !collapsed }))}
+                >
+                  <Text style={styles.dayTitle}>{DAY_LABELS[day]}</Text>
+                  <View style={styles.dayHeaderRight}>
+                    <Text style={styles.dayCount}>
+                      {dayExs.length} {dayExs.length === 1 ? 'ejercicio' : 'ejercicios'}
+                    </Text>
+                    <Text style={styles.chevron}>{collapsed ? '▸' : '▾'}</Text>
+                  </View>
+                </TouchableOpacity>
+                {!collapsed ? (
+                  dayExs.map((ex) => (
+                    <ExerciseCard
+                      key={ex.id + '-' + day}
+                      exercise={ex}
+                      draft={draftOf(ex.id)}
+                      onField={(patch) => updateDraft(ex.id, patch)}
+                      onAddSet={() => addSet(ex)}
+                      onRemoveSet={(index) => removeSet(ex.id, index)}
+                      onFinish={() => finishSession(ex)}
+                      onDelete={() => setDeleteTarget(ex.id)}
+                      onApplyVariation={(vi) => setExerciseVariation(ex.id, vi)}
+                      onAddWeight={(id) => {
+                        const s = suggestionFor(ex);
+                        setAddWeightOffer({ exerciseId: id, variation: s.variation, reps: s.reps });
+                      }}
+                      recsOff={!recsOn}
+                      onDeloadInfo={() => {
+                        const s = suggestionFor(ex);
+                        setDeloadOffer({
+                          exerciseId: ex.id,
+                          mode: ex.mode,
+                          weight: s.weight,
+                          value: ex.isometric ? s.time : s.reps,
+                          variation: s.variation || null,
+                          variationIndex: s.variationIndex ?? null,
+                          isometric: ex.isometric,
+                        });
+                      }}
+                    />
+                  ))
+                ) : null}
+              </View>
+            );
+          })
         )}
       </View>
       </ScrollView>
@@ -4950,6 +5033,35 @@ function makeStyles() {
     fontSize: 14,
     color: colors.muted,
     lineHeight: 20,
+  },
+  daySection: {
+    marginBottom: 12,
+  },
+  dayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.glassCard,
+    backdropFilter: GLASS_BLUR,
+  },
+  dayHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dayTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  dayCount: {
+    fontSize: 12,
+    color: colors.muted,
+    marginRight: 4,
   },
   noteCard: {
     borderWidth: 1,
