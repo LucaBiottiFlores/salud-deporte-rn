@@ -47,6 +47,31 @@ const ISO_TIME_PRESETS = ['10-20', '20-30', '30-45', '45-60'];
 
 const MUSCLE_GROUPS = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Antebrazos', 'Piernas', 'Core'];
 
+// Clave de almacenamiento por cuenta: cada sesión de Supabase guarda sus ejercicios por separado.
+function storageKey(userId) {
+  return PROGRESION_KEY + ':' + (userId || 'anon');
+}
+
+// Plan de fuerza referencial. Los pesos de partida son estimaciones para un hombre de ~77 kg,
+// principiante en pesas con base de boxeo/HIIT: ajústalos según técnica en tu primera sesión.
+const STRENGTH_PLAN = [
+  { name: 'Press de pecho con mancuernas', goal: 'fuerza', muscle: 'Pecho', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 12 },
+  { name: 'Press de hombros con mancuernas', goal: 'fuerza', muscle: 'Hombros', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
+  { name: 'Remo con mancuerna a una mano', goal: 'fuerza', muscle: 'Espalda', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 12 },
+  { name: 'Sentadilla goblet', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14 },
+  { name: 'Peso muerto rumano con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14 },
+  { name: 'Zancadas inversas con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10 },
+  { name: 'Step-up al banco con mancuernas', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10 },
+  { name: 'Curl de bíceps con mancuernas', goal: 'fuerza', muscle: 'Brazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
+  { name: 'Curl martillo', goal: 'fuerza', muscle: 'Antebrazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
+  { name: 'Extensión de tríceps tras nuca', goal: 'fuerza', muscle: 'Brazos', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2, startWeight: 8 },
+  { name: 'Dominadas (o negativas)', goal: 'fuerza', muscle: 'Espalda', mode: 'bodyweight', repMin: 3, repMax: 5, incrementKg: 2.5 },
+  { name: 'Flexiones', goal: 'hipertrofia', muscle: 'Pecho', mode: 'bodyweight', repMin: 8, repMax: 12, incrementKg: 2.5 },
+  { name: 'Swing con pesa rusa', goal: 'hipertrofia', muscle: 'Piernas', mode: 'weighted', repMin: 10, repMax: 15, incrementKg: 2.5, startWeight: 10 },
+  { name: 'Plancha', goal: 'fuerza', muscle: 'Core', isometric: true, timeMin: 30, timeMax: 45, timeIncrement: 5, startWeight: 0 },
+  { name: 'Plancha lateral', goal: 'fuerza', muscle: 'Core', isometric: true, timeMin: 20, timeMax: 30, timeIncrement: 5, startWeight: 0 },
+];
+
 // Escaleras de progresión de peso corporal (calistenia). Ordenadas de fácil a difícil.
 // El avance se basa en aumentar la dificultad de la palanca (tensión mecánica) y,
 // al dominar la variación más dura con el tope de reps, pasar a carga externa.
@@ -462,10 +487,15 @@ function isoSuggestionFor(ex, ignoreDeload = false) {
   const timeInc = Number.isFinite(Number(ex.timeIncrement)) && Number(ex.timeIncrement) > 0 ? Number(ex.timeIncrement) : 5;
 
   if (sessions.length === 0) {
+    const sw = Number.isFinite(Number(ex.startWeight)) && Number(ex.startWeight) >= 0
+      ? round1(Number(ex.startWeight))
+      : null;
     return {
-      weight: null,
+      weight: sw,
       time: timeMin,
-      reason: `Primera sesión: elige un peso y mantén la posición ${timeMin}s.`,
+      reason: sw !== null
+        ? `Peso de partida sugerido: ${sw === 0 ? 'sin lastre (0 kg)' : sw + ' kg'}. Mantén la posición ${timeMin}s.`
+        : `Primera sesión: elige un peso y mantén la posición ${timeMin}s.`,
       kind: 'start',
     };
   }
@@ -599,10 +629,15 @@ function suggestionFor(ex, ignoreDeload = false) {
   if (ex.mode === 'bodyweight') return bodyweightSuggestionFor(ex, ignoreDeload);
   const sessions = ex.sessions || [];
   if (sessions.length === 0) {
+    const sw = Number.isFinite(Number(ex.startWeight)) && Number(ex.startWeight) > 0
+      ? round1(Number(ex.startWeight))
+      : null;
     return {
-      weight: null,
+      weight: sw,
       reps: ex.repMin,
-      reason: 'Primera sesión: elige un peso que puedas mover en el rango',
+      reason: sw !== null
+        ? `Peso de partida sugerido: ${sw} kg. Ajústalo si no lo mueves con técnica limpia.`
+        : 'Primera sesión: elige un peso que puedas mover en el rango',
       kind: 'start',
     };
   }
@@ -755,6 +790,9 @@ function normalizeExercise(ex) {
     timeIncrement,
     ladder,
     variationIndex,
+    startWeight: Number.isFinite(Number(ex?.startWeight)) && Number(ex.startWeight) >= 0
+      ? round1(Number(ex.startWeight))
+      : null,
     muscle: MUSCLE_GROUPS.includes(ex?.muscle) ? ex.muscle : 'Pecho',
     sessions,
   };
@@ -1270,6 +1308,7 @@ export default function App() {
             recsOn={recsOn}
             calibrationDismissed={calibrationDismissed}
             onDismissCalibration={dismissCalibration}
+            userId={session && session.user ? session.user.id : ''}
           />
         </View>
         <View style={[styles.view, { display: activeTab === 'notas' ? 'flex' : 'none' }]}>
@@ -1283,6 +1322,7 @@ export default function App() {
             user={session.user}
             active={activeTab === 'perfil'}
             onLogout={() => supabase.auth.signOut()}
+            userId={session && session.user ? session.user.id : ''}
           />
         </View>
         <View style={[styles.view, { display: activeTab === 'ajustes' ? 'flex' : 'none' }]}>
@@ -1291,6 +1331,7 @@ export default function App() {
             onToggleDark={toggleDark}
             onLogout={() => supabase.auth.signOut()}
             userEmail={session && session.user ? session.user.email : ''}
+            userId={session && session.user ? session.user.id : ''}
             recsOn={recsOn}
             onToggleRecs={toggleRecs}
             onReactivateRecommendations={reactivateRecommendations}
@@ -2814,7 +2855,7 @@ const GLOSARIO_TERMS = [
   },
 ];
 
-function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }) {
+function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, userId }) {
   const [exercises, setExercises] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [showForm, setShowForm] = useState(false);
@@ -2833,11 +2874,21 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [calibrationOffer, setCalibrationOffer] = useState(null);
   const [addWeightOffer, setAddWeightOffer] = useState(null);
+  const [confirmImport, setConfirmImport] = useState(false);
+  const [importStatus, setImportStatus] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(PROGRESION_KEY);
+        let raw = await AsyncStorage.getItem(storageKey(userId));
+        if (!raw && userId) {
+          // Migra los datos previos (sin cuenta) a la clave de esta cuenta.
+          const legacy = await AsyncStorage.getItem(PROGRESION_KEY);
+          if (legacy) {
+            raw = legacy;
+            try { await AsyncStorage.setItem(storageKey(userId), legacy); } catch (_) {}
+          }
+        }
         if (!raw) return;
         const parsed = JSON.parse(raw);
         const arr = Array.isArray(parsed?.exercises)
@@ -2853,7 +2904,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
 
   function persistExercises(next) {
     try {
-      AsyncStorage.setItem(PROGRESION_KEY, JSON.stringify({ exercises: next }));
+      AsyncStorage.setItem(storageKey(userId), JSON.stringify({ exercises: next }));
     } catch (_) {}
   }
 
@@ -2896,6 +2947,35 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
     setFormTimeIncrement('5');
     setFormError('');
     setShowForm(false);
+  }
+
+  function importStrengthPlan() {
+    if (!confirmImport) {
+      setConfirmImport(true);
+      setImportStatus('¿Importar el plan de fuerza en tu cuenta? Toca de nuevo para confirmar.');
+      setTimeout(() => setConfirmImport(false), 6000);
+      return;
+    }
+    setConfirmImport(false);
+    const existing = new Set(exercises.map((e) => (e.name || '').trim().toLowerCase()));
+    const fresh = STRENGTH_PLAN
+      .filter((p) => !existing.has((p.name || '').trim().toLowerCase()))
+      .map((p) => normalizeExercise({ ...p, id: makeId(), sessions: [] }));
+    if (fresh.length === 0) {
+      setImportStatus('El plan ya estaba importado en tu cuenta.');
+      return;
+    }
+    setExercises((prev) => {
+      const next = [...prev, ...fresh];
+      persistExercises(next);
+      return next;
+    });
+    setDrafts((prev) => {
+      const next = { ...prev };
+      fresh.forEach((ex) => { next[ex.id] = seedDraft(ex); });
+      return next;
+    });
+    setImportStatus(`Listo: ${fresh.length} ejercicios del plan de fuerza importados a tu cuenta.`);
   }
 
   function chooseGoal(goal) {
@@ -3070,8 +3150,8 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
     }
 
     const weight = parseFloat(d.weight);
-    if (!Number.isFinite(weight) || weight <= 0) {
-      updateDraft(ex.id, { error: 'Ingresa un peso válido (kg).' });
+    if (!Number.isFinite(weight) || weight < 0 || (!ex.isometric && weight <= 0)) {
+      updateDraft(ex.id, { error: ex.isometric ? 'Ingresa un peso (0 = sin lastre).' : 'Ingresa un peso válido (kg).' });
       return;
     }
     let set;
@@ -3173,10 +3253,14 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.panel}>
         <View style={styles.notesHeader}>
+          <TouchableOpacity style={styles.btnSmallGhost} onPress={importStrengthPlan}>
+            <Text style={styles.btnSmallGhostText}>{confirmImport ? '¿Confirmar importar?' : 'Importar plan de fuerza'}</Text>
+          </TouchableOpacity>
           <PrimaryButton onPress={() => setShowForm((v) => !v)}>
             <Text style={styles.btnPrimaryText}>{showForm ? 'Cerrar' : '+ Nuevo ejercicio'}</Text>
           </PrimaryButton>
         </View>
+        {importStatus ? <Text style={styles.fieldHint}>{importStatus}</Text> : null}
 
         {showForm ? (
           <View style={styles.formPanel}>
@@ -3912,7 +3996,7 @@ function GlosarioScreen() {
   );
 }
 
-function AjustesScreen({ dark, onToggleDark, onLogout, userEmail, recsOn, onToggleRecs, onReactivateRecommendations }) {
+function AjustesScreen({ dark, onToggleDark, onLogout, userEmail, userId, recsOn, onToggleRecs, onReactivateRecommendations }) {
   const [status, setStatus] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -3929,7 +4013,7 @@ function AjustesScreen({ dark, onToggleDark, onLogout, userEmail, recsOn, onTogg
       return;
     }
     try {
-      await AsyncStorage.multiRemove([CONFIG_KEY, NOTES_KEY, PROGRESION_KEY]);
+      await AsyncStorage.multiRemove([CONFIG_KEY, NOTES_KEY, PROGRESION_KEY, storageKey(userId)]);
       setConfirmReset(false);
       setStatus('Datos borrados. Recarga la app.');
     } catch (_) {
@@ -4116,7 +4200,7 @@ function RadarChart({ data }) {
   );
 }
 
-function PerfilScreen({ user, active, onLogout }) {
+function PerfilScreen({ user, active, onLogout, userId }) {
   const meta = user?.user_metadata || {};
   const fullName = meta.full_name || '';
   const first = meta.first_name || '';
@@ -4159,7 +4243,8 @@ function PerfilScreen({ user, active, onLogout }) {
       } catch (_) {}
 
       try {
-        const raw = await AsyncStorage.getItem(PROGRESION_KEY);
+        let raw = await AsyncStorage.getItem(storageKey(userId));
+        if (!raw && userId) raw = await AsyncStorage.getItem(PROGRESION_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
         const arr = Array.isArray(parsed?.exercises)
           ? parsed.exercises.map((ex) => normalizeExercise(ex))
