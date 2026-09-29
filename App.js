@@ -1955,6 +1955,9 @@ function TabataScreen() {
   const [isPaused, setIsPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [summary, setSummary] = useState('');
+  const pulseScale = useRef(new Animated.Value(1)).current;
+  const burnScale = useRef(new Animated.Value(1)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const phasesRef = useRef([]);
   const idxRef = useRef(0);
@@ -1994,6 +1997,70 @@ function TabataScreen() {
       } catch (_) {}
     })();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduceMotion(mq.matches);
+    const onChange = (e) => setReduceMotion(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+    };
+  }, []);
+
+  const timerActive = screen === 'timer' && !isPaused;
+  const burnActive = screen === 'config';
+
+  useEffect(() => {
+    if (!timerActive || reduceMotion) {
+      pulseScale.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseScale, {
+          toValue: 1.03,
+          duration: 600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseScale, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [timerActive, reduceMotion, pulseScale]);
+
+  useEffect(() => {
+    if (!burnActive || reduceMotion) {
+      burnScale.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(burnScale, {
+          toValue: 1.02,
+          duration: 1000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(burnScale, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [burnActive, reduceMotion, burnScale]);
 
   useEffect(() => {
     return () => {
@@ -2392,8 +2459,10 @@ function TabataScreen() {
     return (
       <View style={styles.timerWrap}>
         <View style={[styles.panel, styles.timerPanel]}>
-          <Text style={[styles.phaseLabel, { color: phaseColor }]}>{phaseLabel}</Text>
-          <Text style={styles.timeDisplay} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{timeDisplay}</Text>
+          <Animated.View style={{ alignItems: 'center', transform: [{ scale: pulseScale }] }}>
+            <Text style={[styles.phaseLabel, { color: phaseColor }]}>{phaseLabel}</Text>
+            <Text style={styles.timeDisplay} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{timeDisplay}</Text>
+          </Animated.View>
           <Text style={styles.seriesCounter}>{seriesCounter}</Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${progress}%` }]} />
@@ -2474,9 +2543,11 @@ function TabataScreen() {
           />
         </View>
 
-        <PrimaryButton onPress={start}>
-          <Text style={styles.btnPrimaryText}>Comenzar</Text>
-        </PrimaryButton>
+        <Animated.View style={{ transform: [{ scale: burnScale }] }}>
+          <PrimaryButton onPress={start}>
+            <Text style={styles.btnPrimaryText}>Comenzar</Text>
+          </PrimaryButton>
+        </Animated.View>
 
         {configError ? <Text style={styles.error}>{configError}</Text> : null}
       </View>
@@ -2552,12 +2623,74 @@ function NotesScreen() {
   );
 }
 
+function ShimmerCard({ children, style }) {
+  const shimmer = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduceMotion(mq.matches);
+    const onChange = (e) => setReduceMotion(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      shimmer.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 2500,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0,
+          duration: 2500,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shimmer, reduceMotion]);
+
+  const translateX = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-100%', '100%'],
+  });
+
+  return (
+    <View style={[styles.noteCard, style]}>
+      {children}
+      <View pointerEvents="none" style={styles.shimmerClip}>
+        <Animated.View style={[styles.shimmerSweep, { transform: [{ translateX }] }]}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
 function NoteCard({ note, onSave, onDelete }) {
   const [title, setTitle] = useState(note.title || '');
   const [body, setBody] = useState(note.body || '');
 
   return (
-    <View style={styles.noteCard}>
+    <ShimmerCard>
       <TextInput
         style={styles.noteTitle}
         placeholder="Título (ej: alumno)"
@@ -2582,7 +2715,7 @@ function NoteCard({ note, onSave, onDelete }) {
           <Text style={styles.btnGhostText}>Eliminar</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </ShimmerCard>
   );
 }
 
@@ -3327,7 +3460,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
       <Modal
         visible={!!deloadOffer}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={declineDeload}
       >
         <View style={styles.modalBackdrop}>
@@ -3359,7 +3492,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
       <Modal
         visible={!!deleteTarget}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={cancelDelete}
       >
         <View style={styles.modalBackdrop}>
@@ -3383,7 +3516,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
       <Modal
         visible={!!addWeightOffer}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setAddWeightOffer(null)}
       >
         <View style={styles.modalBackdrop}>
@@ -4302,7 +4435,7 @@ function CalibrationModal({ visible, goal, repMin, repMax, incrementKg, onApply,
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
           {step === 'ask' ? (
@@ -4601,20 +4734,22 @@ function makeStyles() {
   },
   btnPrimary: {
     backgroundColor: colors.accent,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderRadius: 999,
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: colors.accent,
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   btnPrimaryText: {
     color: colors.onAccent,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
   btn: {
     backgroundColor: colors.glass,
@@ -4622,7 +4757,7 @@ function makeStyles() {
     borderColor: colors.glassBorder,
     paddingVertical: 12,
     paddingHorizontal: 18,
-    borderRadius: 12,
+    borderRadius: 999,
     alignItems: 'center',
   },
   btnText: {
@@ -4673,8 +4808,8 @@ function makeStyles() {
   },
   progressTrack: {
     width: '100%',
-    height: 10,
-    borderRadius: 5,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.bg,
     overflow: 'hidden',
     marginTop: 24,
@@ -4683,7 +4818,12 @@ function makeStyles() {
   progressFill: {
     height: '100%',
     backgroundColor: colors.volt,
-    borderRadius: 5,
+    borderRadius: 3,
+    shadowColor: colors.volt,
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 2,
   },
   controls: {
     flexDirection: 'row',
@@ -4720,11 +4860,12 @@ function makeStyles() {
   noteCard: {
     borderWidth: 1,
     borderColor: colors.glassBorder,
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 14,
     marginBottom: 12,
     backgroundColor: colors.glassCard,
     backdropFilter: GLASS_BLUR,
+    overflow: 'hidden',
     shadowColor: '#000000',
     shadowOpacity: 0.05,
     shadowRadius: 10,
@@ -4754,10 +4895,26 @@ function makeStyles() {
     gap: 10,
     marginTop: 12,
   },
+  shimmerClip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    opacity: 0.06,
+  },
+  shimmerSweep: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   formPanel: {
     borderWidth: 1,
     borderColor: colors.glassBorder,
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 14,
     marginBottom: 16,
     backgroundColor: colors.glassCard,
@@ -5134,8 +5291,8 @@ function makeStyles() {
     maxWidth: 400,
     backgroundColor: colors.glass,
     backdropFilter: GLASS_BLUR,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 28,
+    padding: 24,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     shadowColor: '#000000',
@@ -5273,8 +5430,8 @@ function makeStyles() {
     marginBottom: 'auto',
     backgroundColor: colors.glass,
     backdropFilter: GLASS_BLUR,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 28,
+    padding: 24,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     shadowColor: '#000000',
