@@ -1298,6 +1298,11 @@ export default function App() {
               onPress={() => changeTab('tabata')}
             />
             <TabButton
+              label="Timer"
+              active={activeTab === 'timer'}
+              onPress={() => changeTab('timer')}
+            />
+            <TabButton
               label="Progresión"
               active={activeTab === 'progresion'}
               onPress={() => changeTab('progresion')}
@@ -1327,6 +1332,9 @@ export default function App() {
 
         <View style={[styles.view, { display: activeTab === 'tabata' ? 'flex' : 'none' }]}>
           <TabataScreen />
+        </View>
+        <View style={[styles.view, { display: activeTab === 'timer' ? 'flex' : 'none' }]}>
+          <TimerScreen />
         </View>
         <View style={[styles.view, { display: activeTab === 'progresion' ? 'flex' : 'none' }]}>
           <ProgresionScreen
@@ -2000,6 +2008,182 @@ function PrimaryButton({ onPress, disabled, style, children }) {
         {children}
       </Animated.View>
     </TouchableOpacity>
+  );
+}
+
+function TimerScreen() {
+  const [totalSec, setTotalSec] = useState(180);
+  const [remaining, setRemaining] = useState(180);
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const intervalRef = useRef(null);
+  const alertPromiseRef = useRef(null);
+  const alertSoundRef = useRef(null);
+  const alertWebRef = useRef(null);
+  const alertStopRef = useRef(null);
+
+  function fmt(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+  }
+
+  function stopAlert() {
+    if (alertStopRef.current) {
+      clearTimeout(alertStopRef.current);
+      alertStopRef.current = null;
+    }
+    if (isWeb) {
+      const el = alertWebRef.current;
+      if (el) { try { el.pause(); el.currentTime = 0; el.loop = false; } catch (_) {} }
+    } else if (alertSoundRef.current) {
+      try { alertSoundRef.current.stopAsync(); } catch (_) {}
+    }
+  }
+
+  function playAlert() {
+    const asset = SOUND_PRESETS.clasico.done;
+    if (isWeb) {
+      try {
+        if (!alertWebRef.current && typeof window !== 'undefined') {
+          alertWebRef.current = new window.Audio(asset);
+        }
+        const el = alertWebRef.current;
+        if (el) {
+          el.currentTime = 0;
+          el.loop = true;
+          const p = el.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+          if (alertStopRef.current) clearTimeout(alertStopRef.current);
+          alertStopRef.current = setTimeout(() => {
+            try { el.pause(); el.currentTime = 0; el.loop = false; } catch (_) {}
+          }, 5000);
+        }
+      } catch (_) {}
+      return;
+    }
+    try {
+      if (!alertPromiseRef.current) {
+        alertPromiseRef.current = ExpoAudio.Sound.createAsync(asset).then((res) => {
+          alertSoundRef.current = res.sound;
+          return res.sound;
+        });
+      }
+      alertPromiseRef.current.then(async (s) => {
+        await s.setIsLoopingAsync(true);
+        await s.setPositionAsync(0);
+        await s.playAsync();
+        if (alertStopRef.current) clearTimeout(alertStopRef.current);
+        alertStopRef.current = setTimeout(() => {
+          try { s.stopAsync(); } catch (_) {}
+        }, 5000);
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  function selectPreset(sec) {
+    stopAlert();
+    setRunning(false);
+    setDone(false);
+    setTotalSec(sec);
+    setRemaining(sec);
+  }
+
+  function startTimer() {
+    stopAlert();
+    if (remaining <= 0) setRemaining(totalSec);
+    setDone(false);
+    setRunning(true);
+  }
+
+  function pauseTimer() {
+    setRunning(false);
+  }
+
+  function resetTimer() {
+    stopAlert();
+    setRunning(false);
+    setDone(false);
+    setRemaining(totalSec);
+  }
+
+  useEffect(() => {
+    if (!running) return;
+    intervalRef.current = setInterval(() => {
+      setRemaining((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [running]);
+
+  useEffect(() => {
+    if (remaining === 0 && running) {
+      setRunning(false);
+      setDone(true);
+      playAlert();
+    }
+  }, [remaining, running]);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (alertStopRef.current) clearTimeout(alertStopRef.current);
+      if (alertSoundRef.current) { try { alertSoundRef.current.unloadAsync(); } catch (_) {} }
+      if (alertWebRef.current) { try { alertWebRef.current.pause(); } catch (_) {} }
+    };
+  }, []);
+
+  const presets = [30, 60, 120, 180, 300];
+
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>Temporizador</Text>
+
+        <View style={styles.timerPanel}>
+          <Text style={styles.timeDisplay}>{fmt(remaining)}</Text>
+          <Text style={styles.seriesCounter}>
+            {done ? '¡Tiempo cumplido!' : running ? 'Corriendo…' : 'Elige una duración y toca Iniciar'}
+          </Text>
+        </View>
+
+        <Text style={styles.fieldLabel}>Duración</Text>
+        <View style={styles.chipRow}>
+          {presets.map((sec) => (
+            <TouchableOpacity
+              key={sec}
+              style={[styles.goalChip, !running && totalSec === sec && styles.goalChipActive]}
+              onPress={() => selectPreset(sec)}
+            >
+              <Text
+                style={[
+                  styles.goalChipText,
+                  !running && totalSec === sec && styles.goalChipTextActive,
+                ]}
+              >
+                {fmt(sec)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={[styles.controls, { marginTop: 24, justifyContent: 'center' }]}>
+          {running ? (
+            <PrimaryButton onPress={pauseTimer}>
+              <Text style={styles.btnPrimaryText}>Pausar</Text>
+            </PrimaryButton>
+          ) : (
+            <PrimaryButton onPress={startTimer}>
+              <Text style={styles.btnPrimaryText}>Iniciar</Text>
+            </PrimaryButton>
+          )}
+          <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={resetTimer}>
+            <Text style={styles.btnGhostText}>Reiniciar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
   );
 }
 
