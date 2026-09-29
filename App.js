@@ -20,6 +20,8 @@ import Svg, { Circle, Defs, FeGaussianBlur, Filter, G, Line, LinearGradient as S
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from './src/supabase';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 
 const CONFIG_KEY = 'salud-deporte:config';
 const NOTES_KEY = 'salud-deporte:notas';
@@ -34,6 +36,39 @@ function getSiteUrl() {
     return window.location.origin + window.location.pathname;
   }
   return 'https://lucabiottiflores.github.io/salud-deporte-rn/';
+}
+
+// Extrae los tokens del redirect implícito de OAuth (llegan en el fragmento #...).
+function parseOAuthSession(url) {
+  if (!url) return null;
+  const hashIndex = url.indexOf('#');
+  const queryIndex = url.indexOf('?');
+  let raw = '';
+  if (hashIndex >= 0) raw = url.slice(hashIndex + 1);
+  else if (queryIndex >= 0) raw = url.slice(queryIndex + 1);
+  else return null;
+
+  const params = {};
+  for (const part of raw.split('&')) {
+    if (!part) continue;
+    const eq = part.indexOf('=');
+    const key = eq >= 0 ? part.slice(0, eq) : part;
+    const value = eq >= 0 ? part.slice(eq + 1) : '';
+    try {
+      params[decodeURIComponent(key)] = decodeURIComponent(value.replace(/\+/g, ' '));
+    } catch (_) {
+      params[key] = value;
+    }
+  }
+
+  const access_token = params.access_token;
+  if (!access_token) return null;
+  return {
+    access_token,
+    refresh_token: params.refresh_token || null,
+    expires_in: params.expires_in ? parseInt(params.expires_in, 10) : undefined,
+    token_type: params.token_type,
+  };
 }
 
 // Rangos de reps con respaldo en la literatura de sobrecarga progresiva:
@@ -1465,11 +1500,27 @@ function LoginForm({ onSwitch }) {
     setBusy(true);
     setError('');
     try {
-      const { error: err } = await supabase.auth.signInWithOAuth({
+      const redirectTo = isWeb ? getSiteUrl() : Linking.createURL('auth/callback');
+      const { data, error: err } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: getSiteUrl() },
+        options: { redirectTo, skipBrowserRedirect: !isWeb },
       });
-      if (err) setError(mapAuthError(err));
+      if (err) {
+        setError(mapAuthError(err));
+        return;
+      }
+      if (!isWeb && data && data.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+        if (result.type === 'success' && result.url) {
+          const session = parseOAuthSession(result.url);
+          if (session) {
+            const { error: setErr } = await supabase.auth.setSession(session);
+            if (setErr) setError(mapAuthError(setErr));
+          } else {
+            setError(GENERIC_AUTH_ERROR);
+          }
+        }
+      }
     } catch (_) {
       setError(GENERIC_AUTH_ERROR);
     } finally {

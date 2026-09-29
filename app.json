@@ -3,6 +3,7 @@
     "name": "KO FIT",
     "slug": "impulso-fit",
     "version": "1.0.1",
+    "scheme": "kofit",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -32,7 +33,8 @@
         {
           "enableBackgroundPlayback": true
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }
