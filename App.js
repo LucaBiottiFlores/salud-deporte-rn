@@ -909,7 +909,7 @@ function AuroraBackground() {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
         />
-        <Animated.View style={[StyleSheet.absoluteFillObject, layerA]}>
+        <Animated.View style={[styles.auroraLayer, layerA]}>
           <Svg
             width="100%"
             height="100%"
@@ -944,7 +944,7 @@ function AuroraBackground() {
             </G>
           </Svg>
         </Animated.View>
-        <Animated.View style={[StyleSheet.absoluteFillObject, layerB]}>
+        <Animated.View style={[styles.auroraLayer, layerB]}>
           <Svg
             width="100%"
             height="100%"
@@ -4563,6 +4563,13 @@ function makeStyles() {
     flex: 1,
     overflow: 'hidden',
   },
+  auroraLayer: {
+    position: 'absolute',
+    top: -60,
+    bottom: -60,
+    left: -60,
+    right: -60,
+  },
   auroraBlob: {
     position: 'absolute',
     borderRadius: 999,
@@ -4626,15 +4633,17 @@ function makeStyles() {
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
+    minWidth: 0,
+    paddingVertical: 9,
     borderRadius: 13,
     alignItems: 'center',
+    overflow: 'hidden',
   },
   tabActive: {
     backgroundColor: colors.accent,
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
     color: colors.muted,
     textAlign: 'center',
