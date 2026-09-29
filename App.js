@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio as ExpoAudio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import Svg, { Circle, Defs, FeGaussianBlur, Filter, G, Line, LinearGradient as SvgLinearGradient, Polygon, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
@@ -2019,7 +2019,6 @@ function TimerScreen() {
   const [custom, setCustom] = useState(formatClock(180));
 
   const intervalRef = useRef(null);
-  const alertPromiseRef = useRef(null);
   const alertSoundRef = useRef(null);
   const alertWebRef = useRef(null);
   const alertStopRef = useRef(null);
@@ -2037,7 +2036,12 @@ function TimerScreen() {
       const el = alertWebRef.current;
       if (el) { try { el.pause(); el.currentTime = 0; el.loop = false; } catch (_) {} }
     } else if (alertSoundRef.current) {
-      try { alertSoundRef.current.stopAsync(); } catch (_) {}
+      try {
+        const p = alertSoundRef.current;
+        p.pause();
+        p.loop = false;
+        p.seekTo(0);
+      } catch (_) {}
     }
   }
 
@@ -2063,21 +2067,21 @@ function TimerScreen() {
       return;
     }
     try {
-      if (!alertPromiseRef.current) {
-        alertPromiseRef.current = ExpoAudio.Sound.createAsync(asset).then((res) => {
-          alertSoundRef.current = res.sound;
-          return res.sound;
-        });
+      if (!alertSoundRef.current) {
+        alertSoundRef.current = createAudioPlayer(asset);
       }
-      alertPromiseRef.current.then(async (s) => {
-        await s.setIsLoopingAsync(true);
-        await s.setPositionAsync(0);
-        await s.playAsync();
-        if (alertStopRef.current) clearTimeout(alertStopRef.current);
-        alertStopRef.current = setTimeout(() => {
-          try { s.stopAsync(); } catch (_) {}
-        }, 5000);
-      }).catch(() => {});
+      const p = alertSoundRef.current;
+      p.loop = true;
+      p.seekTo(0);
+      p.play();
+      if (alertStopRef.current) clearTimeout(alertStopRef.current);
+      alertStopRef.current = setTimeout(() => {
+        try {
+          p.pause();
+          p.loop = false;
+          p.seekTo(0);
+        } catch (_) {}
+      }, 5000);
     } catch (_) {}
   }
 
@@ -2141,7 +2145,7 @@ function TimerScreen() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (alertStopRef.current) clearTimeout(alertStopRef.current);
-      if (alertSoundRef.current) { try { alertSoundRef.current.unloadAsync(); } catch (_) {} }
+      if (alertSoundRef.current) { try { alertSoundRef.current.remove(); } catch (_) {} }
       if (alertWebRef.current) { try { alertWebRef.current.pause(); } catch (_) {} }
     };
   }, []);
@@ -2246,12 +2250,9 @@ function TabataScreen() {
 
   const bellRef = useRef(null);
   const raceRef = useRef(null);
-  const bellPromiseRef = useRef(null);
-  const racePromiseRef = useRef(null);
   const webBellRef = useRef(null);
   const webRaceRef = useRef(null);
   const keepAliveRef = useRef(null);
-  const keepAlivePromiseRef = useRef(null);
   const keepAliveStopTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -2344,37 +2345,29 @@ function TabataScreen() {
       if (keepAliveStopTimeoutRef.current) clearTimeout(keepAliveStopTimeoutRef.current);
       const unload = (ref) => {
         if (ref.current) {
-          try { ref.current.unloadAsync(); } catch (_) {}
+          try { ref.current.remove(); } catch (_) {}
           ref.current = null;
         }
       };
       unload(bellRef);
       unload(raceRef);
       unload(keepAliveRef);
-      Object.values(toneSoundRef.current).forEach((promise) => {
-        if (promise && typeof promise.then === 'function') {
-          promise.then((s) => { try { s.unloadAsync(); } catch (_) {} }).catch(() => {});
-        }
+      Object.values(toneSoundRef.current).forEach((player) => {
+        try { if (player && player.remove) player.remove(); } catch (_) {}
       });
       toneSoundRef.current = {};
       toneWebRef.current = {};
-      bellPromiseRef.current = null;
-      racePromiseRef.current = null;
       webBellRef.current = null;
       webRaceRef.current = null;
-      keepAlivePromiseRef.current = null;
       keepAliveStopTimeoutRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     if (isWeb) return;
-    ExpoAudio.setAudioModeAsync({
-      staysActiveInBackground: true,
-      playsInSilentModeIOS: true,
-      interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
-      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-      shouldDuckAndroid: true,
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      interruptionMode: 'duckOthers',
     }).catch(() => {});
 
     const sub = AppState.addEventListener('change', (state) => {
@@ -2416,48 +2409,42 @@ function TabataScreen() {
   }
 
   function loadBell() {
-    if (!bellPromiseRef.current) {
-      bellPromiseRef.current = ExpoAudio.Sound.createAsync(BELL_ASSET).then((res) => {
-        bellRef.current = res.sound;
-        return res.sound;
-      });
+    if (!bellRef.current) {
+      bellRef.current = createAudioPlayer(BELL_ASSET);
     }
-    return bellPromiseRef.current;
+    return bellRef.current;
   }
 
   function loadRace() {
-    if (!racePromiseRef.current) {
-      racePromiseRef.current = ExpoAudio.Sound.createAsync(RACE_ASSET).then((res) => {
-        raceRef.current = res.sound;
-        return res.sound;
-      });
+    if (!raceRef.current) {
+      raceRef.current = createAudioPlayer(RACE_ASSET);
     }
-    return racePromiseRef.current;
+    return raceRef.current;
   }
 
-  async function playBell() {
+  function playBell() {
     if (mutedRef.current) return;
     if (isWeb) {
       playWebAudio(getWebBell());
       return;
     }
     try {
-      const s = await loadBell();
-      await s.setPositionAsync(0);
-      await s.playAsync();
+      const s = loadBell();
+      s.seekTo(0);
+      s.play();
     } catch (_) {}
   }
 
-  async function playRace() {
+  function playRace() {
     if (mutedRef.current) return;
     if (isWeb) {
       playWebAudio(getWebRace());
       return;
     }
     try {
-      const s = await loadRace();
-      await s.setPositionAsync(0);
-      await s.playAsync();
+      const s = loadRace();
+      s.seekTo(0);
+      s.play();
     } catch (_) {}
   }
 
@@ -2471,7 +2458,7 @@ function TabataScreen() {
     return toneWebRef.current[asset];
   }
 
-  async function playToneAsset(asset) {
+  function playToneAsset(asset) {
     if (mutedRef.current) return;
     if (isWeb) {
       playWebAudio(getWebTone(asset));
@@ -2479,11 +2466,11 @@ function TabataScreen() {
     }
     try {
       if (!toneSoundRef.current[asset]) {
-        toneSoundRef.current[asset] = ExpoAudio.Sound.createAsync(asset).then((res) => res.sound);
+        toneSoundRef.current[asset] = createAudioPlayer(asset);
       }
-      const s = await toneSoundRef.current[asset];
-      await s.setPositionAsync(0);
-      await s.playAsync();
+      const s = toneSoundRef.current[asset];
+      s.seekTo(0);
+      s.play();
     } catch (_) {}
   }
 
@@ -2497,19 +2484,16 @@ function TabataScreen() {
     playToneAsset(preset.done);
   }
 
-  async function startKeepAlive() {
+  function startKeepAlive() {
     if (isWeb) return;
     try {
-      if (!keepAlivePromiseRef.current) {
-        keepAlivePromiseRef.current = ExpoAudio.Sound.createAsync(SILENT_ASSET).then((res) => {
-          keepAliveRef.current = res.sound;
-          return res.sound;
-        });
+      if (!keepAliveRef.current) {
+        keepAliveRef.current = createAudioPlayer(SILENT_ASSET);
       }
-      const s = await keepAlivePromiseRef.current;
-      await s.setVolumeAsync(0);
-      await s.setIsLoopingAsync(true);
-      await s.playAsync();
+      const s = keepAliveRef.current;
+      s.volume = 0;
+      s.loop = true;
+      s.play();
     } catch (_) {}
   }
 
@@ -2519,7 +2503,10 @@ function TabataScreen() {
       keepAliveStopTimeoutRef.current = null;
     }
     if (keepAliveRef.current) {
-      try { keepAliveRef.current.stopAsync(); } catch (_) {}
+      try {
+        keepAliveRef.current.pause();
+        keepAliveRef.current.seekTo(0);
+      } catch (_) {}
     }
   }
 
@@ -2530,7 +2517,7 @@ function TabataScreen() {
     const preset = SOUND_PRESETS.clasico;
     [preset.rest, preset.done].forEach((asset) => {
       if (!toneSoundRef.current[asset]) {
-        toneSoundRef.current[asset] = ExpoAudio.Sound.createAsync(asset).then((res) => res.sound);
+        toneSoundRef.current[asset] = createAudioPlayer(asset);
       }
     });
   }
