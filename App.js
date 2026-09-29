@@ -16,7 +16,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio as ExpoAudio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import * as Speech from 'expo-speech';
-import Svg, { Circle, Defs, FeGaussianBlur, Filter, G, Line, Polygon, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, FeGaussianBlur, Filter, G, Line, LinearGradient as SvgLinearGradient, Polygon, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from './src/supabase';
@@ -138,87 +138,77 @@ function ladderFor(name) {
 }
 
 const LIGHT_COLORS = {
-  bg: '#eef2f8',
-  panel: '#f7fafd',
-  accent: '#0e8a8f',
-  onAccent: '#ffffff',
-  volt: '#0e8a8f',
-  text: '#1b1f2a',
-  muted: '#66707f',
-  rest: '#2fa3b5',
-  ready: '#d18a2c',
-  border: '#dbe3ef',
-  ghost: '#8b93a3',
-  danger: '#c14f4a',
-  softBg: '#e3eaf4',
-  softBorder: '#d2dbe8',
-  prBg: '#e7edf6',
-  irid: '#8b83d8',
-  sheen: 'rgba(255,255,255,0.30)',
-  glass: 'rgba(255,255,255,0.62)',
-  glassBorder: 'rgba(255,255,255,0.75)',
-  glassCard: 'rgba(255,255,255,0.52)',
-  glassInput: 'rgba(255,255,255,0.44)',
-  aurora: {
-    a: '#3ec6cd',
-    b: '#5ad2e6',
-    c: '#b1a7f0',
-    d: '#f6b73c',
-  },
+  bg: '#F5F4FA',
+  panel: '#FFFFFF',
+  accent: '#FF5040',
+  onAccent: '#FFFFFF',
+  volt: '#FF5040',
+  text: '#14131A',
+  muted: '#6E6B80',
+  rest: '#12A7A7',
+  ready: '#D98A00',
+  border: '#E3E0EC',
+  ghost: '#8E8AA0',
+  danger: '#E8403A',
+  softBg: '#EDEBF5',
+  softBorder: '#DFDCE9',
+  prBg: '#F0EEF8',
+  irid: '#6B5CE7',
+  sheen: 'rgba(255,255,255,0.55)',
+  glass: 'rgba(255,255,255,0.68)',
+  glassBorder: 'rgba(255,255,255,0.82)',
+  glassCard: 'rgba(255,255,255,0.58)',
+  glassInput: 'rgba(255,255,255,0.72)',
+  aurora: { a: '#FF5040', b: '#3EC6C6', c: '#6B5CE7', d: '#FFC94A' },
 };
 
 const DARK_COLORS = {
-  bg: '#0c111c',
-  panel: '#151c2a',
-  accent: '#5ad2d6',
-  onAccent: '#071019',
-  volt: '#5ad2d6',
-  text: '#eef2f8',
-  muted: '#98a4b5',
-  rest: '#55c7dd',
-  ready: '#f0b45a',
-  border: '#232e44',
-  ghost: '#8b98ad',
-  danger: '#f27d78',
-  softBg: '#161f30',
-  softBorder: '#26324a',
-  prBg: '#131c2b',
-  irid: '#7a6fd6',
-  sheen: 'rgba(255,255,255,0.10)',
-  glass: 'rgba(17,24,40,0.46)',
-  glassBorder: 'rgba(255,255,255,0.20)',
-  glassCard: 'rgba(255,255,255,0.10)',
-  glassInput: 'rgba(9,14,24,0.34)',
-  aurora: {
-    a: '#5ad2d6',
-    b: '#55c7dd',
-    c: '#7a6fd6',
-    d: '#f0b45a',
-  },
+  bg: '#0E0E12',
+  panel: '#16161C',
+  accent: '#FF5040',
+  onAccent: '#FFFFFF',
+  volt: '#FF5040',
+  text: '#F0EEF8',
+  muted: '#9A97AD',
+  rest: '#3EC6C6',
+  ready: '#FFC94A',
+  border: '#232330',
+  ghost: '#8E8AA0',
+  danger: '#FF5040',
+  softBg: '#16161C',
+  softBorder: '#1E1E28',
+  prBg: '#1E1E28',
+  irid: '#6B5CE7',
+  sheen: 'rgba(255,255,255,0.06)',
+  glass: 'rgba(22,22,28,0.55)',
+  glassBorder: 'rgba(255,255,255,0.10)',
+  glassCard: 'rgba(255,255,255,0.05)',
+  glassInput: 'rgba(14,14,18,0.50)',
+  aurora: { a: '#FF5040', b: '#3EC6C6', c: '#6B5CE7', d: '#FFC94A' },
 };
 
 const TIMER_COLORS = {
-  bg: '#070b12',
-  panel: '#0e1622',
-  accent: '#4fd1d5',
-  onAccent: '#061014',
-  volt: '#4fd1d5',
-  text: '#f2f5f9',
-  muted: '#93a0b2',
-  rest: '#4fc3f0',
-  ready: '#f5a524',
-  border: '#1a2536',
-  ghost: '#8b98ad',
-  danger: '#f87171',
-  softBg: '#111a29',
-  softBorder: '#1e2a3d',
-  prBg: '#0e1622',
-  irid: '#6f66c9',
-  sheen: 'rgba(255,255,255,0.09)',
-  glass: 'rgba(12,20,32,0.48)',
-  glassBorder: 'rgba(255,255,255,0.20)',
-  glassCard: 'rgba(255,255,255,0.10)',
-  glassInput: 'rgba(8,13,22,0.34)',
+  bg: '#07070A',
+  panel: '#101016',
+  accent: '#FF5040',
+  onAccent: '#FFFFFF',
+  volt: '#FF5040',
+  text: '#F0EEF8',
+  muted: '#8E8AA0',
+  rest: '#3EC6C6',
+  ready: '#FFC94A',
+  border: '#1C1C26',
+  ghost: '#8E8AA0',
+  danger: '#FF5040',
+  softBg: '#101016',
+  softBorder: '#1C1C26',
+  prBg: '#12121A',
+  irid: '#6B5CE7',
+  sheen: 'rgba(255,255,255,0.06)',
+  glass: 'rgba(16,16,22,0.55)',
+  glassBorder: 'rgba(255,255,255,0.12)',
+  glassCard: 'rgba(255,255,255,0.05)',
+  glassInput: 'rgba(10,10,14,0.50)',
 };
 
 const THEMES = { light: LIGHT_COLORS, dark: DARK_COLORS };
@@ -547,28 +537,19 @@ function bodyweightStalled(ex) {
   if (sessions.length < 4) return false;
   const last = sessions[sessions.length - 1];
   const ref = sessions[sessions.length - 4];
-  return (
-    bodyweightBestReps(last) <= bodyweightBestReps(ref) &&
-    bodyweightSessionVariation(last, ex.variationIndex) <= bodyweightSessionVariation(ref, ex.variationIndex)
-  );
+  return bodyweightBestReps(last) <= bodyweightBestReps(ref);
 }
 
 function bodyweightSuggestionFor(ex, ignoreDeload = false) {
   const sessions = ex.sessions || [];
-  const ladder = Array.isArray(ex.ladder) && ex.ladder.length > 0 ? ex.ladder : BODYWEIGHT_GENERIC.slice();
-  const rawVi = Number.isFinite(Number(ex.variationIndex)) ? Math.floor(Number(ex.variationIndex)) : 0;
-  const vi = Math.min(Math.max(rawVi, 0), ladder.length - 1);
   const repMin = Number.isFinite(Number(ex.repMin)) && Number(ex.repMin) >= 1 ? Math.floor(Number(ex.repMin)) : 8;
   const repMax = Number.isFinite(Number(ex.repMax)) && Number(ex.repMax) >= repMin ? Math.floor(Number(ex.repMax)) : Math.max(repMin, 12);
-  const variation = ladder[vi];
 
   if (sessions.length === 0) {
     return {
       weight: null,
       reps: repMin,
-      variation,
-      variationIndex: vi,
-      reason: `Primera sesión: empieza en «${variation}» y haz ${repMin} reps con buena técnica.`,
+      reason: `Primera sesión: haz ${repMin} reps con buena técnica.`,
       kind: 'start',
     };
   }
@@ -579,8 +560,6 @@ function bodyweightSuggestionFor(ex, ignoreDeload = false) {
     return {
       weight: null,
       reps: repMin,
-      variation,
-      variationIndex: vi,
       reason: 'Registra una serie con reps para ver la siguiente sugerencia.',
       kind: 'start',
     };
@@ -591,43 +570,16 @@ function bodyweightSuggestionFor(ex, ignoreDeload = false) {
   const hitTop = validSets.every((s) => Number(s.reps) >= repMax);
 
   if (!ignoreDeload && bodyweightStalled(ex)) {
-    const easier = vi > 0 ? ladder[vi - 1] : null;
     return {
       weight: null,
       reps: repMin,
-      variation: easier || variation,
-      variationIndex: easier ? vi - 1 : vi,
-      reason: easier
-        ? `Posible estancamiento: vuelve a «${easier}» una o dos sesiones y reconstruye desde ahí.`
-        : 'Posible estancamiento: baja el volumen (menos series o reps) una semana y reconstruye.',
+      reason: 'Posible estancamiento: baja el volumen (menos series o reps) una semana y reconstruye.',
       kind: 'deload',
     };
   }
 
-  if (hitTop) {
-    if (vi < ladder.length - 1) {
-      const next = ladder[vi + 1];
-      return {
-        weight: null,
-        reps: repMin,
-        variation: next,
-        variationIndex: vi + 1,
-        reason: `Dominaste «${variation}» (${repMax} reps en todas las series). Progresa a una variación más difícil: «${next}».`,
-        kind: 'advance_variation',
-      };
-    }
-    return {
-      weight: null,
-      reps: repMin,
-      variation,
-      variationIndex: vi,
-      reason: `Llegaste a la variación más difícil («${variation}») y dominas ${repMax} reps. Por encima de ~15 reps la tensión por rep baja: es el momento ideal para empezar a agregar carga externa.`,
-      kind: 'add_weight',
-    };
-  }
-
   let reps = Math.min(workReps + 1, repMax);
-  let reason = `Mantén «${variation}» y suma reps hasta llegar a ${repMax} en todas las series.`;
+  let reason = `Mantén el ritmo y suma reps hasta llegar a ${repMax} en todas las series.`;
   if (avgRir !== null && avgRir >= 3) {
     reps = repMax;
     reason = `Tu esfuerzo fue bajo (RIR ${avgRir}): sube directo a ${repMax} reps en todas las series.`;
@@ -637,8 +589,6 @@ function bodyweightSuggestionFor(ex, ignoreDeload = false) {
   return {
     weight: null,
     reps,
-    variation,
-    variationIndex: vi,
     reason,
     kind: 'add_reps',
   };
@@ -1052,9 +1002,83 @@ function GlassSheen({ radius }) {
   );
 }
 
+function KoFitMark({ size = 30 }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduceMotion(mq.matches);
+    const onChange = (e) => setReduceMotion(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      scale.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, {
+          toValue: 1.06,
+          duration: 800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [scale, reduceMotion]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Svg width={size} height={size} viewBox="0 0 100 100" fill="none" aria-label="KO FIT logo">
+        <Defs>
+          <SvgLinearGradient id="kfit-k-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor="#FF5040" />
+            <Stop offset="100%" stopColor="#FF7A6B" />
+          </SvgLinearGradient>
+        </Defs>
+        <Circle cx="64" cy="50" r="22" stroke="#3EC6C6" strokeWidth="9" />
+        <Line x1="14" y1="14" x2="14" y2="86" stroke="url(#kfit-k-grad)" strokeWidth="9" strokeLinecap="round" />
+        <Line x1="14" y1="50" x2="48" y2="14" stroke="url(#kfit-k-grad)" strokeWidth="9" strokeLinecap="round" />
+        <Line x1="14" y1="50" x2="80" y2="80" stroke="url(#kfit-k-grad)" strokeWidth="9" strokeLinecap="round" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+function KoFitBrand({ size = 28, showTagline = false }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <KoFitMark size={size} />
+      <View style={{ marginLeft: 10 }}>
+        <Text style={{ fontSize: size >= 30 ? 22 : 20, fontWeight: '800', letterSpacing: -0.5, color: colors.text }}>KO FIT</Text>
+        {showTagline ? (
+          <Text style={{ fontSize: 8, fontWeight: '600', letterSpacing: 2, color: colors.muted, textTransform: 'uppercase', marginTop: 2 }}>
+            Train. Evolve. Repeat.
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('tabata');
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(true);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [recoveryMode, setRecoveryMode] = useState(false);
@@ -1068,6 +1092,9 @@ export default function App() {
         if (raw === 'true' || raw === '"true"') {
           applyTheme(true);
           setDark(true);
+        } else if (raw === 'false' || raw === '"false"') {
+          applyTheme(false);
+          setDark(false);
         }
       } catch (_) {}
       try {
@@ -1187,7 +1214,7 @@ export default function App() {
               />
             ) : null}
             <GlassSheen radius={20} />
-            <Text style={styles.title}>KO FIT</Text>
+            <KoFitBrand size={28} />
           </View>
         </View>
 
@@ -1283,7 +1310,9 @@ function AuthScaffold({ title, subtitle, children }) {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.authCard}>
-          <Text style={styles.authBrand}>KO FIT</Text>
+          <View style={{ alignItems: 'center', marginBottom: 4 }}>
+            <KoFitBrand size={56} showTagline />
+          </View>
           {title ? <Text style={styles.authTitle}>{title}</Text> : null}
           {subtitle ? <Text style={styles.authSubtitle}>{subtitle}</Text> : null}
           {children}
@@ -2962,16 +2991,12 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
 
     if (!recsOn) return;
     const nextSug = suggestionFor(updatedEx);
-    if (nextSug.kind === 'add_weight') {
-      setAddWeightOffer({ exerciseId: ex.id, variation: nextSug.variation, reps: nextSug.reps });
-    } else if (nextSug.kind === 'deload') {
+    if (nextSug.kind === 'deload') {
       setDeloadOffer({
         exerciseId: ex.id,
         mode: ex.mode,
         weight: nextSug.weight,
         value: updatedEx.isometric ? nextSug.time : nextSug.reps,
-        variation: nextSug.variation || null,
-        variationIndex: nextSug.variationIndex ?? null,
         isometric: updatedEx.isometric,
       });
     }
@@ -2981,7 +3006,6 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
     if (!deloadOffer) return;
     const { exerciseId, weight, value, isometric, mode, variationIndex } = deloadOffer;
     if (mode === 'bodyweight') {
-      if (Number.isFinite(Number(variationIndex))) setExerciseVariation(exerciseId, Number(variationIndex));
       setDrafts((prev) => {
         const cur = prev[exerciseId] || { weight: '', reps: '', time: '', rir: 2, sets: [] };
         return { ...prev, [exerciseId]: { ...cur, reps: String(value) } };
@@ -3105,7 +3129,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
               </View>
               <Text style={styles.fieldHint}>
                 {formMode === 'bodyweight'
-                  ? 'Peso corporal: progresa con repeticiones y variaciones más difíciles, sin registrar kilos.'
+                  ? 'Peso corporal: progresa con repeticiones, sin registrar kilos.'
                   : 'Con peso: registras carga en kg por serie.'}
               </Text>
             </View>
@@ -3145,31 +3169,6 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
             {formMode === 'bodyweight' ? (
               <>
                 <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Variación inicial</Text>
-                  <View style={styles.chipRow}>
-                    {ladderFor(formName).map((step, i) => (
-                      <TouchableOpacity
-                        key={step}
-                        style={[styles.variationChip, formVariation === i && styles.goalChipActive]}
-                        onPress={() => setFormVariation(i)}
-                      >
-                        <Text
-                          style={[
-                            styles.variationChipText,
-                            formVariation === i && styles.variationChipTextActive,
-                          ]}
-                        >
-                          {step}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <Text style={styles.fieldHint}>
-                    Elige la variación con la que empiezas hoy. La app te guiará a las siguientes.
-                  </Text>
-                </View>
-
-                <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Rango de reps</Text>
                   <View style={styles.chipRow}>
                     {(REP_RANGE_PRESETS[formGoal] || []).map((range) => (
@@ -3191,7 +3190,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
                   </View>
                   <Text style={styles.fieldHint}>
                     {formGoal === 'fuerza'
-                      ? 'Fuerza: 1-6 reps con una variación exigente.'
+                      ? 'Fuerza: 1-6 reps.'
                       : 'Hipertrofia: 6-15 reps por serie.'}
                   </Text>
                 </View>
@@ -3336,9 +3335,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
             <Text style={styles.modalTitle}>¿Descarga (deload)?</Text>
             <Text style={styles.modalBody}>
               {deloadOffer?.mode === 'bodyweight'
-                ? (deloadOffer?.variation
-                    ? `Tu progreso se estancó. Vuelve a «${deloadOffer.variation}» una o dos sesiones para recuperar y luego reconstruye.`
-                    : 'Tu progreso se estancó. Baja el volumen (menos series o reps) una semana y reconstruye.')
+                ? 'Tu progreso se estancó. Baja el volumen (menos series o reps) una semana y reconstruye.'
                 : deloadOffer?.isometric
                   ? `Tu progreso se estancó. Una semana de descarga (bajar el tiempo a ${deloadOffer?.value}s) ayuda a recuperar la fatiga acumulada y volver más fuerte.`
                   : `Tu progreso se estancó. Una semana de descarga (bajar la carga a ${deloadOffer?.weight} kg) ayuda a recuperar la fatiga acumulada y volver más fuerte.`}
@@ -3350,7 +3347,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration }
               <TouchableOpacity style={[styles.btnPrimary, styles.modalPrimary]} onPress={acceptDeload}>
                 <Text style={styles.btnPrimaryText}>
                   {deloadOffer?.mode === 'bodyweight'
-                    ? (deloadOffer?.variation ? 'Sí, bajar variación' : 'Sí, ajustar')
+                    ? 'Sí, ajustar'
                     : deloadOffer?.isometric ? 'Sí, ajustar tiempo' : 'Sí, ajustar carga'}
                 </Text>
               </TouchableOpacity>
@@ -3470,23 +3467,17 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
 
     if (bw) {
       const bestReps = bodyweightBestReps(last);
-      const ladder = Array.isArray(exercise.ladder) && exercise.ladder.length > 0 ? exercise.ladder : BODYWEIGHT_GENERIC;
-      const variationName = ladder[exercise.variationIndex] || 'Variación actual';
-      lastSummary = `${setCount}×${bestReps} reps · ${variationName}${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
+      lastSummary = `${setCount}×${bestReps} reps${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
       isStall = bodyweightStalled(exercise);
       if (sessions.length === 1) {
         historyNote = 'Primera sesión: ya tienes tu punto de partida.';
       } else {
         const prev = sessions[sessions.length - 2];
         const prevBest = bodyweightBestReps(prev);
-        const prevVar = bodyweightSessionVariation(prev, exercise.variationIndex);
-        const curVar = bodyweightSessionVariation(last, exercise.variationIndex);
-        if (curVar > prevVar) {
-          historyNote = 'Avanzaste a una variación más difícil: sigue sumando reps.';
-        } else if (bestReps > prevBest) {
+        if (bestReps > prevBest) {
           historyNote = `Sumaste reps: de ${prevBest} a ${bestReps}.`;
         } else {
-          historyNote = 'Mantén la variación y sigue sumando reps.';
+          historyNote = 'Sigue sumando reps.';
         }
       }
       historyNote += ` Próximo objetivo: ${sug.reps} reps.`;
@@ -3604,7 +3595,7 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
         <View style={styles.sugBox}>
           <Text style={styles.sugLine}>
             {bw
-              ? `«${sug.variation}» × ${sug.reps} reps`
+              ? `${sug.reps} reps`
               : sug.weight !== null
                 ? iso
                   ? `${sug.weight} kg × ${sug.time}s`
@@ -3614,16 +3605,6 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
                   : `Primera sesión: elige un peso y haz ${exercise.repMin} reps`}
           </Text>
           <Text style={styles.sugReason}>{sug.reason}</Text>
-          {sug.kind === 'advance_variation' ? (
-            <TouchableOpacity style={styles.linkBtn} onPress={() => onApplyVariation(sug.variationIndex)}>
-              <Text style={styles.linkBtnText}>{`Cambiar a: ${sug.variation}`}</Text>
-            </TouchableOpacity>
-          ) : null}
-          {sug.kind === 'add_weight' ? (
-            <TouchableOpacity style={styles.linkBtn} onPress={() => onAddWeight(exercise.id)}>
-              <Text style={styles.linkBtnText}>Empezar a agregar peso</Text>
-            </TouchableOpacity>
-          ) : null}
           {sug.kind === 'deload' ? (
             <TouchableOpacity style={styles.linkBtn} onPress={onDeloadInfo}>
               <Text style={styles.linkBtnText}>Ver por qué descargar</Text>
@@ -3631,30 +3612,6 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           ) : null}
         </View>
       )}
-
-      {bw ? (
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Variación actual</Text>
-          <View style={styles.chipRow}>
-            {(Array.isArray(exercise.ladder) && exercise.ladder.length > 0 ? exercise.ladder : BODYWEIGHT_GENERIC).map((step, i) => (
-              <TouchableOpacity
-                key={step}
-                style={[styles.variationChip, exercise.variationIndex === i && styles.goalChipActive]}
-                onPress={() => onApplyVariation(i)}
-              >
-                <Text
-                  style={[
-                    styles.variationChipText,
-                    exercise.variationIndex === i && styles.variationChipTextActive,
-                  ]}
-                >
-                  {step}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      ) : null}
 
       <Text style={styles.sectionTitle}>Registrar serie</Text>
       <View style={styles.inputRow}>
@@ -3740,7 +3697,7 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           {isStall ? (
             <Text style={styles.stallText}>
               {bw
-                ? 'Posible estancamiento: vuelve a una variación más fácil una o dos sesiones y reconstruye.'
+                ? 'Posible estancamiento: baja el volumen (menos series o reps) una semana y reconstruye.'
                 : iso
                   ? `Posible estancamiento: descarga el tiempo de trabajo a ${round1(isoBestTime(exercise.sessions[exercise.sessions.length - 1]) * 0.9)}s y reconstruye.`
                   : `Posible estancamiento: descarga a ${round1(firstSetWeight(exercise.sessions[exercise.sessions.length - 1]) * 0.9)} kg y reconstruye.`}
@@ -5603,9 +5560,9 @@ function makeStyles() {
   });
 }
 
-let colors = THEMES.light;
+let colors = THEMES.dark;
 let styles = makeStyles();
-let timerColors = THEMES.light;
+let timerColors = TIMER_COLORS;
 let timerStyles = buildTimerStyles();
 
 function buildTimerStyles() {
