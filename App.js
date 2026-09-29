@@ -2016,7 +2016,7 @@ function TimerScreen() {
   const [remaining, setRemaining] = useState(180);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
-  const [custom, setCustom] = useState('03:00');
+  const [custom, setCustom] = useState(formatClock(180));
 
   const intervalRef = useRef(null);
   const alertPromiseRef = useRef(null);
@@ -2025,10 +2025,7 @@ function TimerScreen() {
   const alertStopRef = useRef(null);
 
   function fmt(sec) {
-    const s = Math.max(0, Math.floor(sec));
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+    return formatClock(sec);
   }
 
   function stopAlert() {
@@ -2045,7 +2042,7 @@ function TimerScreen() {
   }
 
   function playAlert() {
-    const asset = SOUND_PRESETS.clasico.done;
+    const asset = SOUND_PRESETS.clasico.rest;
     if (isWeb) {
       try {
         if (!alertWebRef.current && typeof window !== 'undefined') {
@@ -5090,6 +5087,8 @@ function makeStyles() {
   },
   tabBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     backgroundColor: colors.glass,
     borderRadius: 18,
     padding: 5,
@@ -5104,9 +5103,8 @@ function makeStyles() {
     borderRadius: 18,
   },
   tab: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 9,
+    width: '25%',
+    paddingVertical: 13,
     borderRadius: 13,
     alignItems: 'center',
     overflow: 'hidden',
