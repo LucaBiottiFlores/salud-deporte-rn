@@ -75,6 +75,21 @@ const STRENGTH_PLAN = [
   { name: 'Swing con pesa rusa', goal: 'hipertrofia', muscle: 'Piernas', mode: 'weighted', repMin: 10, repMax: 15, incrementKg: 2.5, startWeight: 10, days: ['jueves'] },
 ];
 
+// Un ejercicio del plan siempre usa el día definido en STRENGTH_PLAN (por nombre), aunque
+// estuviera guardado con días antiguos o vacíos. Los ejercicios propios usan sus días guardados.
+function daysForExercise(ex) {
+  const name = (ex?.name || '').trim().toLowerCase();
+  const match = STRENGTH_PLAN.find((p) => (p.name || '').trim().toLowerCase() === name);
+  if (match && Array.isArray(match.days) && match.days.some((d) => DAYS.includes(d))) {
+    return match.days.filter((d) => DAYS.includes(d));
+  }
+  if (Array.isArray(ex?.days) && ex.days.some((d) => DAYS.includes(d))) {
+    return ex.days.filter((d) => DAYS.includes(d));
+  }
+  if (DAYS.includes(ex?.day)) return [ex.day];
+  return ['lunes'];
+}
+
 // Escaleras de progresión de peso corporal (calistenia). Ordenadas de fácil a difícil.
 // El avance se basa en aumentar la dificultad de la palanca (tensión mecánica) y,
 // al dominar la variación más dura con el tope de reps, pasar a carga externa.
@@ -796,9 +811,7 @@ function normalizeExercise(ex) {
     startWeight: Number.isFinite(Number(ex?.startWeight)) && Number(ex.startWeight) >= 0
       ? round1(Number(ex.startWeight))
       : null,
-    days: Array.isArray(ex?.days) && ex.days.some((d) => DAYS.includes(d))
-      ? ex.days.filter((d) => DAYS.includes(d))
-      : DAYS.includes(ex?.day) ? [ex.day] : ['lunes'],
+    days: daysForExercise(ex),
     muscle: MUSCLE_GROUPS.includes(ex?.muscle) ? ex.muscle : 'Pecho',
     sessions,
   };
@@ -2906,6 +2919,10 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         const seeded = {};
         arr.forEach((ex) => { seeded[ex.id] = seedDraft(ex); });
         setDrafts(seeded);
+        // Reescribe los datos normalizados (corrige días antiguos/vacíos) para que persistan.
+        if (arr.length > 0) {
+          try { await AsyncStorage.setItem(storageKey(userId), JSON.stringify({ exercises: arr })); } catch (_) {}
+        }
       } catch (_) {}
     })();
   }, []);
@@ -2982,12 +2999,12 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
       const ex = existingByName[key];
       const days = (p.days || []).filter((d) => DAYS.includes(d));
       if (ex) {
-        const needsDays = !Array.isArray(ex.days) || !ex.days.some((d) => DAYS.includes(d));
+        const daysChanged = JSON.stringify(ex.days) !== JSON.stringify(days);
         const needsWeight = ex.startWeight == null && p.startWeight != null;
-        if (needsDays || needsWeight) {
+        if (daysChanged || needsWeight) {
           patched.set(ex.id, {
             ...ex,
-            days: needsDays ? days : ex.days,
+            days,
             startWeight: needsWeight ? p.startWeight : ex.startWeight,
           });
         }
