@@ -2016,6 +2016,7 @@ function TimerScreen() {
   const [remaining, setRemaining] = useState(180);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
+  const [custom, setCustom] = useState('03:00');
 
   const intervalRef = useRef(null);
   const alertPromiseRef = useRef(null);
@@ -2089,6 +2090,20 @@ function TimerScreen() {
     setDone(false);
     setTotalSec(sec);
     setRemaining(sec);
+    setCustom(fmt(sec));
+  }
+
+  function applyCustom(text) {
+    const formatted = formatTimeInput(text.replace(/\D/g, ''));
+    setCustom(formatted);
+    const sec = parseTime(formatted);
+    if (Number.isFinite(sec) && sec > 0) {
+      stopAlert();
+      setRunning(false);
+      setDone(false);
+      setTotalSec(sec);
+      setRemaining(sec);
+    }
   }
 
   function startTimer() {
@@ -2166,6 +2181,19 @@ function TimerScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>O escribe un tiempo personalizado</Text>
+          <TextInput
+            style={styles.input}
+            value={custom}
+            onChangeText={applyCustom}
+            keyboardType="number-pad"
+            placeholder="MM:SS"
+            placeholderTextColor="#9ca3af"
+            editable={!running}
+          />
         </View>
 
         <View style={[styles.controls, { marginTop: 24, justifyContent: 'center' }]}>
