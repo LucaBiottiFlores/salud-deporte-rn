@@ -25,6 +25,7 @@ const CONFIG_KEY = 'salud-deporte:config';
 const NOTES_KEY = 'salud-deporte:notas';
 const PROGRESION_KEY = 'salud-deporte:progresion';
 const HIIT_LOG_KEY = 'salud-deporte:hiit-log';
+const DAYS_MIGRATION_KEY = 'salud-deporte:days-migrated:v1';
 
 const GENERIC_AUTH_ERROR = 'No se pudo completar la acción. Revisa los datos e inténtalo de nuevo.';
 
@@ -75,18 +76,18 @@ const STRENGTH_PLAN = [
   { name: 'Swing con pesa rusa', goal: 'hipertrofia', muscle: 'Piernas', mode: 'weighted', repMin: 10, repMax: 15, incrementKg: 2.5, startWeight: 10, days: ['jueves'] },
 ];
 
-// Un ejercicio del plan siempre usa el día definido en STRENGTH_PLAN (por nombre), aunque
-// estuviera guardado con días antiguos o vacíos. Los ejercicios propios usan sus días guardados.
+// Resuelve los días de un ejercicio. Si guardó días (incluso vacío = "sin día"), se respetan.
+// Solo cuando NO existe el campo (datos antiguos) se deduce del plan o se usa Lunes.
 function daysForExercise(ex) {
+  if (Array.isArray(ex?.days)) {
+    return ex.days.filter((d) => DAYS.includes(d));
+  }
+  if (DAYS.includes(ex?.day)) return [ex.day];
   const name = (ex?.name || '').trim().toLowerCase();
   const match = STRENGTH_PLAN.find((p) => (p.name || '').trim().toLowerCase() === name);
   if (match && Array.isArray(match.days) && match.days.some((d) => DAYS.includes(d))) {
     return match.days.filter((d) => DAYS.includes(d));
   }
-  if (Array.isArray(ex?.days) && ex.days.some((d) => DAYS.includes(d))) {
-    return ex.days.filter((d) => DAYS.includes(d));
-  }
-  if (DAYS.includes(ex?.day)) return [ex.day];
   return ['lunes'];
 }
 
@@ -2896,7 +2897,8 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   const [addWeightOffer, setAddWeightOffer] = useState(null);
   const [confirmImport, setConfirmImport] = useState(false);
   const [importStatus, setImportStatus] = useState('');
-  const [collapsedDays, setCollapsedDays] = useState({});
+  const [openDays, setOpenDays] = useState({});
+  const [confirmClearDays, setConfirmClearDays] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -2912,17 +2914,38 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         }
         if (!raw) return;
         const parsed = JSON.parse(raw);
-        const arr = Array.isArray(parsed?.exercises)
-          ? parsed.exercises.map((ex) => normalizeExercise(ex))
-          : [];
+        let rawExs = Array.isArray(parsed?.exercises) ? parsed.exercises : [];
+
+        // Migración única: a los ejercicios del plan se les asigna el día correcto si estaban
+        // guardados sin día o con el día por defecto equivocado. Después se respetan tus días.
+        let migrated = false;
+        try { migrated = (await AsyncStorage.getItem(DAYS_MIGRATION_KEY)) === 'true'; } catch (_) {}
+        if (!migrated) {
+          rawExs = rawExs.map((ex) => {
+            const name = (ex?.name || '').trim().toLowerCase();
+            const match = STRENGTH_PLAN.find((p) => (p.name || '').trim().toLowerCase() === name);
+            if (match && Array.isArray(match.days)) {
+              const target = match.days.filter((d) => DAYS.includes(d));
+              if (JSON.stringify(ex?.days) !== JSON.stringify(target)) {
+                return { ...ex, days: target };
+              }
+            }
+            return ex;
+          });
+        }
+
+        const arr = rawExs.map((ex) => normalizeExercise(ex));
         setExercises(arr);
         const seeded = {};
         arr.forEach((ex) => { seeded[ex.id] = seedDraft(ex); });
         setDrafts(seeded);
-        // Reescribe los datos normalizados (corrige días antiguos/vacíos) para que persistan.
-        if (arr.length > 0) {
-          try { await AsyncStorage.setItem(storageKey(userId), JSON.stringify({ exercises: arr })); } catch (_) {}
-        }
+
+        try {
+          await AsyncStorage.setItem(DAYS_MIGRATION_KEY, 'true');
+          if (arr.length > 0) {
+            await AsyncStorage.setItem(storageKey(userId), JSON.stringify({ exercises: arr }));
+          }
+        } catch (_) {}
       } catch (_) {}
     })();
   }, []);
@@ -3027,6 +3050,22 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
       return next;
     });
     setImportStatus(`Listo: plan de fuerza actualizado en tu cuenta (${fresh.length} nuevos, ${patched.size} con días asignados).`);
+  }
+
+  function clearAllDays() {
+    if (!confirmClearDays) {
+      setConfirmClearDays(true);
+      setImportStatus('¿Vaciar los días de todos los ejercicios? Quedarán en «Sin día». Toca de nuevo para confirmar.');
+      setTimeout(() => setConfirmClearDays(false), 6000);
+      return;
+    }
+    setConfirmClearDays(false);
+    setExercises((prev) => {
+      const next = prev.map((e) => ({ ...e, days: [] }));
+      persistExercises(next);
+      return next;
+    });
+    setImportStatus('Días vaciados. Los ejercicios quedaron en «Sin día».');
   }
 
   function chooseGoal(goal) {
@@ -3302,17 +3341,55 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
     setDeleteTarget(null);
   }
 
+  function renderCard(ex, key) {
+    return (
+      <ExerciseCard
+        key={key}
+        exercise={ex}
+        draft={draftOf(ex.id)}
+        onField={(patch) => updateDraft(ex.id, patch)}
+        onAddSet={() => addSet(ex)}
+        onRemoveSet={(index) => removeSet(ex.id, index)}
+        onFinish={() => finishSession(ex)}
+        onDelete={() => setDeleteTarget(ex.id)}
+        onApplyVariation={(vi) => setExerciseVariation(ex.id, vi)}
+        onAddWeight={(id) => {
+          const s = suggestionFor(ex);
+          setAddWeightOffer({ exerciseId: id, variation: s.variation, reps: s.reps });
+        }}
+        recsOff={!recsOn}
+        onDeloadInfo={() => {
+          const s = suggestionFor(ex);
+          setDeloadOffer({
+            exerciseId: ex.id,
+            mode: ex.mode,
+            weight: s.weight,
+            value: ex.isometric ? s.time : s.reps,
+            variation: s.variation || null,
+            variationIndex: s.variationIndex ?? null,
+            isometric: ex.isometric,
+          });
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.panel}>
         <View style={styles.notesHeader}>
-          <TouchableOpacity style={styles.btnSmallGhost} onPress={importStrengthPlan}>
-            <Text style={styles.btnSmallGhostText}>{confirmImport ? '¿Confirmar importar?' : 'Importar plan de fuerza'}</Text>
-          </TouchableOpacity>
           <PrimaryButton onPress={() => setShowForm((v) => !v)}>
             <Text style={styles.btnPrimaryText}>{showForm ? 'Cerrar' : '+ Nuevo ejercicio'}</Text>
           </PrimaryButton>
+        </View>
+        <View style={styles.secondaryRow}>
+          <TouchableOpacity style={styles.btnSmallGhost} onPress={importStrengthPlan}>
+            <Text style={styles.btnSmallGhostText}>{confirmImport ? '¿Confirmar importar?' : 'Importar plan'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnSmallGhost, styles.secondaryBtn]} onPress={clearAllDays}>
+            <Text style={styles.btnSmallGhostText}>{confirmClearDays ? '¿Vaciar días?' : 'Vaciar días'}</Text>
+          </TouchableOpacity>
         </View>
         {importStatus ? <Text style={styles.fieldHint}>{importStatus}</Text> : null}
 
@@ -3584,59 +3661,52 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
             No hay ejercicios todavía. Crea el primero con «+ Nuevo ejercicio».
           </Text>
         ) : (
-          DAYS.map((day) => {
-            const dayExs = exercises.filter((ex) => (ex.days || []).includes(day));
-            if (dayExs.length === 0) return null;
-            const collapsed = !!collapsedDays[day];
-            return (
-              <View key={day} style={styles.daySection}>
-                <TouchableOpacity
-                  style={styles.dayHeader}
-                  onPress={() => setCollapsedDays((prev) => ({ ...prev, [day]: !collapsed }))}
-                >
-                  <Text style={styles.dayTitle}>{DAY_LABELS[day]}</Text>
-                  <View style={styles.dayHeaderRight}>
-                    <Text style={styles.dayCount}>
-                      {dayExs.length} {dayExs.length === 1 ? 'ejercicio' : 'ejercicios'}
-                    </Text>
-                    <Text style={styles.chevron}>{collapsed ? '▸' : '▾'}</Text>
-                  </View>
-                </TouchableOpacity>
-                {!collapsed ? (
-                  dayExs.map((ex) => (
-                    <ExerciseCard
-                      key={ex.id + '-' + day}
-                      exercise={ex}
-                      draft={draftOf(ex.id)}
-                      onField={(patch) => updateDraft(ex.id, patch)}
-                      onAddSet={() => addSet(ex)}
-                      onRemoveSet={(index) => removeSet(ex.id, index)}
-                      onFinish={() => finishSession(ex)}
-                      onDelete={() => setDeleteTarget(ex.id)}
-                      onApplyVariation={(vi) => setExerciseVariation(ex.id, vi)}
-                      onAddWeight={(id) => {
-                        const s = suggestionFor(ex);
-                        setAddWeightOffer({ exerciseId: id, variation: s.variation, reps: s.reps });
-                      }}
-                      recsOff={!recsOn}
-                      onDeloadInfo={() => {
-                        const s = suggestionFor(ex);
-                        setDeloadOffer({
-                          exerciseId: ex.id,
-                          mode: ex.mode,
-                          weight: s.weight,
-                          value: ex.isometric ? s.time : s.reps,
-                          variation: s.variation || null,
-                          variationIndex: s.variationIndex ?? null,
-                          isometric: ex.isometric,
-                        });
-                      }}
-                    />
-                  ))
-                ) : null}
-              </View>
-            );
-          })
+          <>
+            {DAYS.map((day) => {
+              const dayExs = exercises.filter((ex) => (ex.days || []).includes(day));
+              if (dayExs.length === 0) return null;
+              const open = !!openDays[day];
+              return (
+                <View key={day} style={styles.daySection}>
+                  <TouchableOpacity
+                    style={styles.dayHeader}
+                    onPress={() => setOpenDays((prev) => ({ ...prev, [day]: !open }))}
+                  >
+                    <Text style={styles.dayTitle}>{DAY_LABELS[day]}</Text>
+                    <View style={styles.dayHeaderRight}>
+                      <Text style={styles.dayCount}>
+                        {dayExs.length} {dayExs.length === 1 ? 'ejercicio' : 'ejercicios'}
+                      </Text>
+                      <Text style={styles.chevron}>{open ? '▾' : '▸'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {open ? dayExs.map((ex) => renderCard(ex, ex.id + '-' + day)) : null}
+                </View>
+              );
+            })}
+            {(() => {
+              const unassigned = exercises.filter((ex) => (ex.days || []).length === 0);
+              if (unassigned.length === 0) return null;
+              const open = !!openDays['sin-dia'];
+              return (
+                <View style={styles.daySection}>
+                  <TouchableOpacity
+                    style={styles.dayHeader}
+                    onPress={() => setOpenDays((prev) => ({ ...prev, 'sin-dia': !open }))}
+                  >
+                    <Text style={styles.dayTitle}>Sin día</Text>
+                    <View style={styles.dayHeaderRight}>
+                      <Text style={styles.dayCount}>
+                        {unassigned.length} {unassigned.length === 1 ? 'ejercicio' : 'ejercicios'}
+                      </Text>
+                      <Text style={styles.chevron}>{open ? '▾' : '▸'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {open ? unassigned.map((ex) => renderCard(ex, ex.id)) : null}
+                </View>
+              );
+            })()}
+          </>
         )}
       </View>
       </ScrollView>
@@ -5050,6 +5120,16 @@ function makeStyles() {
     fontSize: 14,
     color: colors.muted,
     lineHeight: 20,
+  },
+  secondaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 14,
+  },
+  secondaryBtn: {
+    marginLeft: 8,
   },
   daySection: {
     marginBottom: 12,
