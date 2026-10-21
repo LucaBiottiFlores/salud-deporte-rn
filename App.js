@@ -116,6 +116,34 @@ const STRENGTH_PLAN = [
   { name: 'Swing con pesa rusa', goal: 'hipertrofia', muscle: 'Piernas', mode: 'weighted', repMin: 10, repMax: 15, incrementKg: 2.5, startWeight: 10, days: ['jueves'] },
 ];
 
+// Rutina fullbody fija: se repite todos los días (por eso va sin día asignado).
+// Los pesos de partida son estimaciones para un hombre de ~77 kg con base de boxeo/HIIT.
+// Cada ejercicio con `evolve` permite pasar a un ejercicio más difícil al cumplir la condición.
+const FULLBODY_PLAN = [
+  { name: 'Press de pecho inclinado', goal: 'fuerza', muscle: 'Pecho', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10, days: [] },
+  { name: 'Sentadilla goblet', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14, days: [],
+    evolve: {
+      when: { metric: 'weight', value: 39, everySet: true },
+      to: { name: 'Sentadilla con barra', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 20 },
+    } },
+  { name: 'Dominadas neutras', goal: 'hipertrofia', muscle: 'Espalda', mode: 'bodyweight', repMin: 6, repMax: 10, incrementKg: 2.5, days: [],
+    evolve: {
+      when: { metric: 'reps', value: 10, everySet: true },
+      to: { name: 'Dominadas pronas', goal: 'hipertrofia', muscle: 'Espalda', mode: 'bodyweight', repMin: 6, repMax: 10, incrementKg: 2.5 },
+    } },
+  { name: 'Peso muerto rumano', goal: 'fuerza', muscle: 'Piernas', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 14, days: [] },
+  { name: 'Remo en banco inclinado', goal: 'fuerza', muscle: 'Espalda', mode: 'weighted', repMin: 4, repMax: 6, incrementKg: 2.5, startWeight: 10, days: [] },
+  { name: 'Elevaciones laterales en banco inclinado', goal: 'hipertrofia', muscle: 'Hombros', mode: 'weighted', repMin: 8, repMax: 12, incrementKg: 1, startWeight: 4, days: [] },
+  { name: 'Elevaciones laterales en banco inclinado con pecho apoyado', goal: 'hipertrofia', muscle: 'Hombros', mode: 'weighted', repMin: 8, repMax: 12, incrementKg: 1, startWeight: 4, days: [] },
+  { name: 'Curl de bíceps en banco inclinado', goal: 'hipertrofia', muscle: 'Brazos', mode: 'weighted', repMin: 8, repMax: 12, incrementKg: 2, startWeight: 6, days: [] },
+  { name: 'Extensión de tríceps en banco inclinado', goal: 'hipertrofia', muscle: 'Brazos', mode: 'weighted', repMin: 8, repMax: 12, incrementKg: 2, startWeight: 6, days: [] },
+  { name: 'Crunch inverso', goal: 'hipertrofia', muscle: 'Core', mode: 'bodyweight', repMin: 10, repMax: 15, incrementKg: 2.5, days: [],
+    evolve: {
+      when: { metric: 'reps', value: 15, everySet: true },
+      to: { name: 'Elevaciones garhammer', goal: 'hipertrofia', muscle: 'Core', mode: 'bodyweight', repMin: 6, repMax: 12, incrementKg: 2.5 },
+    } },
+];
+
 // Resuelve los días de un ejercicio. Si guardó días (incluso vacío = "sin día"), se respetan.
 // Solo cuando NO existe el campo (datos antiguos) se deduce del plan o se usa Lunes.
 function daysForExercise(ex) {
@@ -129,6 +157,45 @@ function daysForExercise(ex) {
     return match.days.filter((d) => DAYS.includes(d));
   }
   return ['lunes'];
+}
+
+// Evolución de un ejercicio a otro: se cumple cuando la última sesión registrada alcanza la condición.
+function evolveConditionMet(ex) {
+  const ev = ex?.evolve;
+  if (!ev || !ev.when) return false;
+  const sessions = ex?.sessions || [];
+  if (sessions.length === 0) return false;
+  const last = sessions[sessions.length - 1];
+  const sets = (last?.sets || []).filter((s) => s);
+  if (sets.length === 0) return false;
+  const everySet = ev.when.everySet !== false;
+  const val = Number(ev.when.value);
+  if (!Number.isFinite(val)) return false;
+  const pred = ev.when.metric === 'weight'
+    ? (s) => Number.isFinite(Number(s.weight)) && Number(s.weight) >= val
+    : (s) => Number.isFinite(Number(s.reps)) && Number(s.reps) >= val;
+  return everySet ? sets.every(pred) : sets.some(pred);
+}
+
+function evolveLabel(ev) {
+  if (!ev || !ev.when) return '';
+  const unit = ev.when.metric === 'weight' ? 'kg' : 'reps';
+  const every = ev.when.everySet !== false ? ' en todas las series' : '';
+  return `${ev.when.value} ${unit}${every} → ${ev.to?.name || ''}`;
+}
+
+function evolveProgress(ex) {
+  const ev = ex?.evolve;
+  if (!ev || !ev.when) return null;
+  const sessions = ex?.sessions || [];
+  if (sessions.length === 0) return null;
+  const last = sessions[sessions.length - 1];
+  const sets = (last?.sets || []).filter((s) => s);
+  if (sets.length === 0) return null;
+  const vals = sets
+    .map((s) => (ev.when.metric === 'weight' ? Number(s.weight) : Number(s.reps)))
+    .filter((n) => Number.isFinite(n));
+  return vals.length > 0 ? Math.min(...vals) : null;
 }
 
 // Escaleras de progresión de peso corporal (calistenia). Ordenadas de fácil a difícil.
@@ -3148,6 +3215,8 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   const [calibrationOffer, setCalibrationOffer] = useState(null);
   const [addWeightOffer, setAddWeightOffer] = useState(null);
   const [confirmImport, setConfirmImport] = useState(false);
+  const [confirmFullbody, setConfirmFullbody] = useState(false);
+  const [evolveOffer, setEvolveOffer] = useState(null);
   const [importStatus, setImportStatus] = useState('');
   const [openDays, setOpenDays] = useState({});
   const [confirmClearDays, setConfirmClearDays] = useState(false);
@@ -3302,6 +3371,48 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
       return next;
     });
     setImportStatus(`Listo: plan de fuerza actualizado en tu cuenta (${fresh.length} nuevos, ${patched.size} con días asignados).`);
+  }
+
+  function importFullbodyPlan() {
+    if (!confirmFullbody) {
+      setConfirmFullbody(true);
+      setImportStatus('¿Importar la rutina Fullbody (se repite todos los días) en tu cuenta? Toca de nuevo para confirmar.');
+      setTimeout(() => setConfirmFullbody(false), 6000);
+      return;
+    }
+    setConfirmFullbody(false);
+    const existingByName = {};
+    exercises.forEach((e) => { existingByName[(e.name || '').trim().toLowerCase()] = e; });
+    const fresh = [];
+    const patched = new Map();
+    FULLBODY_PLAN.forEach((p) => {
+      const key = (p.name || '').trim().toLowerCase();
+      const ex = existingByName[key];
+      if (ex) {
+        const daysChanged = JSON.stringify(ex.days) !== JSON.stringify([]);
+        const needsEvolve = p.evolve && !ex.evolve;
+        if (daysChanged || needsEvolve) {
+          patched.set(ex.id, { ...ex, days: [], evolve: p.evolve || ex.evolve });
+        }
+      } else {
+        fresh.push(normalizeExercise({ ...p, id: makeId(), sessions: [] }));
+      }
+    });
+    if (fresh.length === 0 && patched.size === 0) {
+      setImportStatus('La rutina Fullbody ya estaba importada.');
+      return;
+    }
+    setExercises((prev) => {
+      const next = prev.map((e) => patched.get(e.id) || e).concat(fresh);
+      persistExercises(next);
+      return next;
+    });
+    setDrafts((prev) => {
+      const next = { ...prev };
+      fresh.forEach((ex) => { next[ex.id] = seedDraft(ex); });
+      return next;
+    });
+    setImportStatus(`Listo: rutina Fullbody en tu cuenta (${fresh.length} nuevos, ${patched.size} actualizados).`);
   }
 
   function clearAllDays() {
@@ -3473,6 +3584,24 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
     setAddWeightOffer(null);
   }
 
+  function evolveExercise(id) {
+    const ex = exercises.find((e) => e.id === id);
+    if (!ex || !ex.evolve || !ex.evolve.to) return;
+    const target = normalizeExercise({
+      ...ex.evolve.to,
+      id: ex.id,
+      days: ex.days || [],
+      sessions: [],
+    });
+    setExercises((prev) => {
+      const next = prev.map((e) => (e.id === id ? target : e));
+      persistExercises(next);
+      return next;
+    });
+    setDrafts((prev) => ({ ...prev, [id]: seedDraft(target) }));
+    setEvolveOffer(null);
+  }
+
   function addSet(ex) {
     const d = draftOf(ex.id);
     const rir = d.rir;
@@ -3609,6 +3738,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
           const s = suggestionFor(ex);
           setAddWeightOffer({ exerciseId: id, variation: s.variation, reps: s.reps });
         }}
+        onEvolve={() => setEvolveOffer({ exerciseId: ex.id, fromName: ex.name, toName: ex.evolve?.to?.name })}
         recsOff={!recsOn}
         onDeloadInfo={() => {
           const s = suggestionFor(ex);
@@ -3636,7 +3766,10 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
           </PrimaryButton>
         </View>
         <View style={styles.secondaryRow}>
-          <TouchableOpacity style={styles.btnSmallGhost} onPress={importStrengthPlan}>
+          <TouchableOpacity style={styles.btnSmallGhost} onPress={importFullbodyPlan}>
+            <Text style={styles.btnSmallGhostText}>{confirmFullbody ? '¿Confirmar Fullbody?' : 'Importar Fullbody'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnSmallGhost, styles.secondaryBtn]} onPress={importStrengthPlan}>
             <Text style={styles.btnSmallGhostText}>{confirmImport ? '¿Confirmar importar?' : 'Importar plan'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.btnSmallGhost, styles.secondaryBtn]} onPress={clearAllDays}>
@@ -4047,6 +4180,30 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         </View>
       </Modal>
 
+      <Modal
+        visible={!!evolveOffer}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEvolveOffer(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>¿Evolucionar ejercicio?</Text>
+            <Text style={styles.modalBody}>
+              {`Pasarás de «${evolveOffer?.fromName}» a «${evolveOffer?.toName}». El nuevo ejercicio comienza de cero (sin historial).`}
+            </Text>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={[styles.btn, styles.modalGhost]} onPress={() => setEvolveOffer(null)}>
+                <Text style={styles.btnGhostText}>No, mantener</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnPrimary, styles.modalPrimary]} onPress={() => evolveExercise(evolveOffer.exerciseId)}>
+                <Text style={styles.btnPrimaryText}>Sí, evolucionar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <CalibrationModal
         visible={!!calibrationOffer}
         goal={calibrationOffer?.goal}
@@ -4061,7 +4218,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   );
 }
 
-function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinish, onDelete, onDeloadInfo, onApplyVariation, onAddWeight, recsOff }) {
+function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinish, onDelete, onDeloadInfo, onApplyVariation, onAddWeight, onEvolve, recsOff }) {
   const [collapsed, setCollapsed] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const sug = suggestionFor(exercise);
@@ -4072,6 +4229,15 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
   const timeVal = draft.time;
   const rir = draft.rir;
   const sets = draft.sets || [];
+
+  const evolve = exercise.evolve || null;
+  const evolveMet = evolve ? evolveConditionMet(exercise) : false;
+  let evolveNote = '';
+  if (evolve && !evolveMet) {
+    const prog = evolveProgress(exercise);
+    const unit = evolve.when.metric === 'weight' ? 'kg' : 'reps';
+    evolveNote = `Meta: ${evolveLabel(evolve)}.` + (prog != null ? ` Progreso actual: ${prog} ${unit}.` : '');
+  }
 
   const sessions = exercise.sessions || [];
   const hasChart = !iso && sessions.length >= 2;
@@ -4251,6 +4417,22 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           ) : null}
         </View>
       )}
+
+      {evolve ? (
+        <View style={styles.evolveBox}>
+          <Text style={styles.sugLine}>Evolución</Text>
+          <Text style={styles.sugReason}>
+            {evolveMet
+              ? `¡Objetivo cumplido! Puedes evolucionar a «${evolve.to?.name}».`
+              : evolveNote}
+          </Text>
+          {evolveMet ? (
+            <TouchableOpacity style={[styles.btnPrimary, styles.finishBtn]} onPress={onEvolve}>
+              <Text style={styles.btnPrimaryText}>Evolucionar a {evolve.to?.name}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Registrar serie</Text>
       <View style={styles.inputRow}>
@@ -5620,6 +5802,14 @@ function makeStyles() {
     color: colors.muted,
     marginTop: 2,
     lineHeight: 18,
+  },
+  evolveBox: {
+    backgroundColor: colors.glassInput,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.accent,
   },
   rirRow: {
     flexDirection: 'row',
