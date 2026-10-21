@@ -4097,7 +4097,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
                     style={styles.dayHeader}
                     onPress={() => setOpenDays((prev) => ({ ...prev, 'sin-dia': !open }))}
                   >
-                    <Text style={styles.dayTitle}>Sin día</Text>
+                    <Text style={styles.dayTitle}>Fullbody</Text>
                     <View style={styles.dayHeaderRight}>
                       <Text style={styles.dayCount}>
                         {unassigned.length} {unassigned.length === 1 ? 'ejercicio' : 'ejercicios'}
