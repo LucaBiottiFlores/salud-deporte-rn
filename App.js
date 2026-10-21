@@ -3220,6 +3220,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   const [importStatus, setImportStatus] = useState('');
   const [openDays, setOpenDays] = useState({});
   const [confirmClearDays, setConfirmClearDays] = useState(false);
+  const [confirmWipeAll, setConfirmWipeAll] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -3429,6 +3430,20 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
       return next;
     });
     setImportStatus('Días vaciados. Los ejercicios quedaron en «Sin día».');
+  }
+
+  function wipeAllExercises() {
+    if (!confirmWipeAll) {
+      setConfirmWipeAll(true);
+      setImportStatus('¿Borrar TODOS los ejercicios y días? La sección Progresión quedará vacía. Toca de nuevo para confirmar.');
+      setTimeout(() => setConfirmWipeAll(false), 6000);
+      return;
+    }
+    setConfirmWipeAll(false);
+    setExercises([]);
+    persistExercises([]);
+    setDrafts({});
+    setImportStatus('Progresión vaciada. Ya puedes importar una rutina nueva.');
   }
 
   function chooseGoal(goal) {
@@ -3774,6 +3789,9 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
           </TouchableOpacity>
           <TouchableOpacity style={[styles.btnSmallGhost, styles.secondaryBtn]} onPress={clearAllDays}>
             <Text style={styles.btnSmallGhostText}>{confirmClearDays ? '¿Vaciar días?' : 'Vaciar días'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnSmallGhost, styles.secondaryBtn]} onPress={wipeAllExercises}>
+            <Text style={styles.btnSmallGhostText}>{confirmWipeAll ? '¿Borrar todo?' : 'Borrar todo'}</Text>
           </TouchableOpacity>
         </View>
         {importStatus ? <Text style={styles.fieldHint}>{importStatus}</Text> : null}
