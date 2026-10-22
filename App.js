@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import * as Notifications from 'expo-notifications';
 import * as Speech from 'expo-speech';
 import Svg, { Circle, Defs, FeGaussianBlur, Filter, G, Line, LinearGradient as SvgLinearGradient, Polygon, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
@@ -28,6 +29,7 @@ const NOTES_KEY = 'salud-deporte:notas';
 const PROGRESION_KEY = 'salud-deporte:progresion';
 const HIIT_LOG_KEY = 'salud-deporte:hiit-log';
 const DAYS_MIGRATION_KEY = 'salud-deporte:days-migrated:v1';
+const WEEKLY_REMINDER_KEY = 'salud-deporte:weekly-reminder';
 
 const GENERIC_AUTH_ERROR = 'No se pudo completar la acción. Revisa los datos e inténtalo de nuevo.';
 
@@ -72,11 +74,9 @@ function parseOAuthSession(url) {
 }
 
 // Rangos de reps con respaldo en la literatura de sobrecarga progresiva:
-// fuerza 1-6 reps, hipertrofia 6-15 reps. Fijos para evitar rangos sin límite.
-const REP_RANGE_PRESETS = {
-  fuerza: ['1-3', '3-5', '4-6'],
-  hipertrofia: ['6-10', '8-12', '10-15'],
-};
+// Rangos de reps disponibles al crear un ejercicio. Sin separación por objetivo:
+// eliges el rango en el que te sientas cómodo entrenando con buena técnica.
+const REP_RANGE_PRESETS = ['1-3', '3-5', '4-6', '6-10', '8-12', '10-15'];
 
 // Rangos de tiempo (segundos) para ejercicios isométricos.
 const ISO_TIME_PRESETS = ['10-20', '20-30', '30-45', '45-60'];
@@ -89,6 +89,21 @@ const DAY_LABELS = { lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', 
 // Clave de almacenamiento por cuenta: cada sesión de Supabase guarda sus ejercicios por separado.
 function storageKey(userId) {
   return PROGRESION_KEY + ':' + (userId || 'anon');
+}
+
+function weeklyReminderKey(userId) {
+  return WEEKLY_REMINDER_KEY + ':' + (userId || 'anon');
+}
+
+// Semana ISO (año + número de semana). Lunes es el primer día de la semana.
+function currentISOWeek() {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${week}`;
 }
 
 // Plan de fuerza referencial. Los pesos de partida son estimaciones para un hombre de ~77 kg,
@@ -384,6 +399,67 @@ const SOUND_PRESETS = {
 };
 
 const isWeb = Platform.OS === 'web';
+
+// Temporizador: notificaciones locales para que suene aunque el teléfono esté bloqueado.
+const TIMER_CHANNEL_ID = 'timer';
+const TIMER_SOUND = 'timer_done.wav';
+const TIMER_ASSET = require('./assets/timer_done.wav');
+
+if (!isWeb) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
+
+async function ensureTimerChannel() {
+  if (isWeb || Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync(TIMER_CHANNEL_ID, {
+      name: 'Temporizador',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: TIMER_SOUND,
+      vibrationPattern: [0, 350, 250, 350, 250, 350],
+    });
+  } catch (_) {}
+}
+
+async function requestNotificationPermission() {
+  if (isWeb) return false;
+  try {
+    const cur = await Notifications.getPermissionsAsync();
+    if (cur.status === 'granted') return true;
+    const req = await Notifications.requestPermissionsAsync();
+    return req.status === 'granted';
+  } catch (_) { return false; }
+}
+
+async function scheduleTimerNotification(seconds) {
+  if (isWeb || seconds <= 0) return null;
+  try {
+    await ensureTimerChannel();
+    const ok = await requestNotificationPermission();
+    if (!ok) return null;
+    return await Notifications.scheduleNotificationAsync({
+      content: { title: 'Temporizador', body: '¡Tiempo cumplido! Terminó tu descanso.', sound: TIMER_SOUND },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(Date.now() + seconds * 1000),
+        channelId: TIMER_CHANNEL_ID,
+      },
+    });
+  } catch (_) { return null; }
+}
+
+async function cancelTimerNotification(id) {
+  if (isWeb || id == null) return;
+  try { await Notifications.cancelScheduledNotificationAsync(id); } catch (_) {}
+}
+
 // Frostrar el vidrio de verdad en web (react-native-web 0.21 soporta backdropFilter).
 const GLASS_BLUR = isWeb ? 'blur(22px) saturate(175%) brightness(1.05)' : undefined;
 
@@ -2144,6 +2220,8 @@ function TimerScreen() {
   const alertSoundRef = useRef(null);
   const alertWebRef = useRef(null);
   const alertStopRef = useRef(null);
+  const endAtRef = useRef(null);
+  const notificationIdRef = useRef(null);
 
   function fmt(sec) {
     return formatClock(sec);
@@ -2168,7 +2246,7 @@ function TimerScreen() {
   }
 
   function playAlert() {
-    const asset = SOUND_PRESETS.clasico.rest;
+    const asset = TIMER_ASSET;
     if (isWeb) {
       try {
         if (!alertWebRef.current && typeof window !== 'undefined') {
@@ -2176,6 +2254,7 @@ function TimerScreen() {
         }
         const el = alertWebRef.current;
         if (el) {
+          el.volume = 1.0;
           el.currentTime = 0;
           el.loop = true;
           const p = el.play();
@@ -2193,6 +2272,7 @@ function TimerScreen() {
         alertSoundRef.current = createAudioPlayer(asset);
       }
       const p = alertSoundRef.current;
+      p.volume = 1.0;
       p.loop = true;
       p.seekTo(0);
       p.play();
@@ -2209,6 +2289,9 @@ function TimerScreen() {
 
   function selectPreset(sec) {
     stopAlert();
+    cancelTimerNotification(notificationIdRef.current);
+    notificationIdRef.current = null;
+    endAtRef.current = null;
     setRunning(false);
     setDone(false);
     setTotalSec(sec);
@@ -2222,6 +2305,9 @@ function TimerScreen() {
     const sec = parseTime(formatted);
     if (Number.isFinite(sec) && sec > 0) {
       stopAlert();
+      cancelTimerNotification(notificationIdRef.current);
+      notificationIdRef.current = null;
+      endAtRef.current = null;
       setRunning(false);
       setDone(false);
       setTotalSec(sec);
@@ -2231,17 +2317,28 @@ function TimerScreen() {
 
   function startTimer() {
     stopAlert();
-    if (remaining <= 0) setRemaining(totalSec);
+    let sec = remaining;
+    if (remaining <= 0) {
+      sec = totalSec;
+      setRemaining(totalSec);
+    }
+    endAtRef.current = Date.now() + sec * 1000;
     setDone(false);
     setRunning(true);
+    scheduleTimerNotification(sec).then((id) => { notificationIdRef.current = id; });
   }
 
   function pauseTimer() {
+    cancelTimerNotification(notificationIdRef.current);
+    notificationIdRef.current = null;
     setRunning(false);
   }
 
   function resetTimer() {
     stopAlert();
+    cancelTimerNotification(notificationIdRef.current);
+    notificationIdRef.current = null;
+    endAtRef.current = null;
     setRunning(false);
     setDone(false);
     setRemaining(totalSec);
@@ -2250,13 +2347,16 @@ function TimerScreen() {
   useEffect(() => {
     if (!running) return;
     intervalRef.current = setInterval(() => {
-      setRemaining((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
+      const left = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000));
+      setRemaining(left);
+    }, 250);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [running]);
 
   useEffect(() => {
     if (remaining === 0 && running) {
+      cancelTimerNotification(notificationIdRef.current);
+      notificationIdRef.current = null;
       setRunning(false);
       setDone(true);
       playAlert();
@@ -2267,6 +2367,7 @@ function TimerScreen() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (alertStopRef.current) clearTimeout(alertStopRef.current);
+      cancelTimerNotification(notificationIdRef.current);
       if (alertSoundRef.current) { try { alertSoundRef.current.remove(); } catch (_) {} }
       if (alertWebRef.current) { try { alertWebRef.current.pause(); } catch (_) {} }
     };
@@ -3225,6 +3326,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   const [openDays, setOpenDays] = useState({});
   const [confirmClearDays, setConfirmClearDays] = useState(false);
   const [confirmWipeAll, setConfirmWipeAll] = useState(false);
+  const [weeklyReminder, setWeeklyReminder] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -3294,18 +3396,8 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   }
 
   function seedDraft(ex) {
-    const sug = suggestionFor(ex, true);
-    const draft = {
-      weight: sug.weight !== null ? String(sug.weight) : '',
-      rir: 2,
-      sets: [],
-    };
-    if (ex.isometric) {
-      draft.time = sug.time !== undefined ? String(sug.time) : '';
-    } else {
-      draft.reps = String(sug.reps);
-    }
-    return draft;
+    // Sin ajuste automático: los campos de peso/reps/time parten vacíos y tú los llenas.
+    return { weight: '', reps: '', time: '', rir: 2, sets: [] };
   }
 
   function resetForm() {
@@ -3450,11 +3542,6 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
     setImportStatus('Progresión vaciada. Ya puedes importar una rutina nueva.');
   }
 
-  function chooseGoal(goal) {
-    setFormGoal(goal);
-    setFormRepRange(goal === 'fuerza' ? '3-5' : '8-12');
-  }
-
   function saveExercise() {
     const name = formName.trim();
     if (!name) {
@@ -3534,9 +3621,6 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
     });
     setDrafts((prev) => ({ ...prev, [ex.id]: seedDraft(ex) }));
     resetForm();
-    if (recsOn && !calibrationDismissed && !ex.isometric && ex.mode !== 'bodyweight') {
-      setCalibrationOffer({ exerciseId: ex.id, goal: ex.goal, repMin: ex.repMin, repMax: ex.repMax, incrementKg: ex.incrementKg });
-    }
   }
 
   function applyCalibration(weight, reps) {
@@ -3682,6 +3766,18 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
     });
   }
 
+  async function maybeShowWeeklyReminder() {
+    if (!recsOn) return;
+    try {
+      const key = weeklyReminderKey(userId);
+      const seen = await AsyncStorage.getItem(key);
+      const week = currentISOWeek();
+      if (seen === week) return;
+      setWeeklyReminder(true);
+      await AsyncStorage.setItem(key, week);
+    } catch (_) {}
+  }
+
   function finishSession(ex) {
     const d = draftOf(ex.id);
     if (!d.sets || d.sets.length === 0) return;
@@ -3694,18 +3790,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
       return next;
     });
     setDrafts((prev) => ({ ...prev, [ex.id]: seedDraft(updatedEx) }));
-
-    if (!recsOn) return;
-    const nextSug = suggestionFor(updatedEx);
-    if (nextSug.kind === 'deload') {
-      setDeloadOffer({
-        exerciseId: ex.id,
-        mode: ex.mode,
-        weight: nextSug.weight,
-        value: updatedEx.isometric ? nextSug.time : nextSug.reps,
-        isometric: updatedEx.isometric,
-      });
-    }
+    maybeShowWeeklyReminder();
   }
 
   function acceptDeload() {
@@ -3753,24 +3838,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         onFinish={() => finishSession(ex)}
         onDelete={() => setDeleteTarget(ex.id)}
         onApplyVariation={(vi) => setExerciseVariation(ex.id, vi)}
-        onAddWeight={(id) => {
-          const s = suggestionFor(ex);
-          setAddWeightOffer({ exerciseId: id, variation: s.variation, reps: s.reps });
-        }}
         onEvolve={() => setEvolveOffer({ exerciseId: ex.id, fromName: ex.name, toName: ex.evolve?.to?.name })}
-        recsOff={!recsOn}
-        onDeloadInfo={() => {
-          const s = suggestionFor(ex);
-          setDeloadOffer({
-            exerciseId: ex.id,
-            mode: ex.mode,
-            weight: s.weight,
-            value: ex.isometric ? s.time : s.reps,
-            variation: s.variation || null,
-            variationIndex: s.variationIndex ?? null,
-            isometric: ex.isometric,
-          });
-        }}
       />
     );
   }
@@ -3813,28 +3881,6 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
                 placeholder="Ej: Press banca"
                 placeholderTextColor="#9ca3af"
               />
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Objetivo</Text>
-              <View style={styles.chipRow}>
-                {['fuerza', 'hipertrofia'].map((goal) => (
-                  <TouchableOpacity
-                    key={goal}
-                    style={[styles.goalChip, formGoal === goal && styles.goalChipActive]}
-                    onPress={() => chooseGoal(goal)}
-                  >
-                    <Text
-                      style={[
-                        styles.goalChipText,
-                        formGoal === goal && styles.goalChipTextActive,
-                      ]}
-                    >
-                      {goal === 'fuerza' ? 'Fuerza' : 'Hipertrofia'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
             </View>
 
             <View style={styles.field}>
@@ -3949,7 +3995,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
                 <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Rango de reps</Text>
                   <View style={styles.chipRow}>
-                    {(REP_RANGE_PRESETS[formGoal] || []).map((range) => (
+                    {REP_RANGE_PRESETS.map((range) => (
                       <TouchableOpacity
                         key={range}
                         style={[styles.goalChip, formRepRange === range && styles.goalChipActive]}
@@ -3967,9 +4013,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
                     ))}
                   </View>
                   <Text style={styles.fieldHint}>
-                    {formGoal === 'fuerza'
-                      ? 'Fuerza: 1-6 reps.'
-                      : 'Hipertrofia: 6-15 reps por serie.'}
+                    Elige el rango en el que entrenes con buena técnica.
                   </Text>
                 </View>
               </>
@@ -4016,7 +4060,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
                 <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Rango de reps</Text>
                   <View style={styles.chipRow}>
-                    {(REP_RANGE_PRESETS[formGoal] || []).map((range) => (
+                    {REP_RANGE_PRESETS.map((range) => (
                       <TouchableOpacity
                         key={range}
                         style={[styles.goalChip, formRepRange === range && styles.goalChipActive]}
@@ -4034,9 +4078,7 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
                     ))}
                   </View>
                   <Text style={styles.fieldHint}>
-                    {formGoal === 'fuerza'
-                      ? 'Fuerza: 1-6 reps por serie.'
-                      : 'Hipertrofia: 6-15 reps por serie.'} Opciones fijas con límite sano.
+                    Elige el rango en el que entrenes con buena técnica.
                   </Text>
                 </View>
 
@@ -4226,6 +4268,27 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
         </View>
       </Modal>
 
+      <Modal
+        visible={weeklyReminder}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWeeklyReminder(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Nueva semana de entrenamiento</Text>
+            <Text style={styles.modalBody}>
+              Es buena idea aumentar repeticiones y/o peso en tus ejercicios esta semana, siempre que mantengas buena técnica. Ajusta cada serie según cómo te sientas.
+            </Text>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={[styles.btnPrimary, styles.modalPrimary]} onPress={() => setWeeklyReminder(false)}>
+                <Text style={styles.btnPrimaryText}>Entendido</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <CalibrationModal
         visible={!!calibrationOffer}
         goal={calibrationOffer?.goal}
@@ -4240,10 +4303,9 @@ function ProgresionScreen({ recsOn, calibrationDismissed, onDismissCalibration, 
   );
 }
 
-function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinish, onDelete, onDeloadInfo, onApplyVariation, onAddWeight, onEvolve, recsOff }) {
+function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinish, onDelete, onApplyVariation, onEvolve }) {
   const [collapsed, setCollapsed] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
-  const sug = suggestionFor(exercise);
   const iso = exercise.isometric === true;
   const bw = exercise.mode === 'bodyweight';
   const weightVal = draft.weight;
@@ -4307,7 +4369,6 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           historyNote = 'Sigue sumando reps.';
         }
       }
-      historyNote += ` Próximo objetivo: ${sug.reps} reps.`;
     } else if (iso) {
       const firstTime = last.sets[0]?.time ?? 0;
       lastSummary = `${setCount}×${firstTime}s @ ${firstWeight} kg${avgRir !== null ? ` · RIR ${avgRir}` : ''}`;
@@ -4326,9 +4387,6 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
         } else {
           historyNote = 'Mantén la carga y sigue sumando tiempo.';
         }
-      }
-      if (sug.weight !== null && sug.time !== undefined) {
-        historyNote += ` Próximo objetivo: ${sug.weight} kg × ${sug.time}s.`;
       }
     } else {
       const best = bestE1RM(last);
@@ -4374,9 +4432,6 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
           historyNote = 'Sumaste reps sin perder ritmo: vas bien.';
         }
       }
-      if (sug.weight !== null) {
-        historyNote += ` Próximo objetivo: ${sug.weight} kg × ${sug.reps} reps.`;
-      }
     }
   }
 
@@ -4386,11 +4441,6 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
         <TouchableOpacity style={styles.exerciseTitleBtn} onPress={() => setCollapsed((v) => !v)}>
           <View style={styles.exerciseTitleWrap}>
             <Text style={styles.exerciseName}>{exercise.name}</Text>
-            <View style={styles.goalBadge}>
-              <Text style={styles.goalBadgeText}>
-                {exercise.goal === 'fuerza' ? 'Fuerza' : 'Hipertrofia'}
-              </Text>
-            </View>
             <View style={styles.muscleBadge}>
               <Text style={styles.muscleBadgeText}>{exercise.muscle || 'Pecho'}</Text>
             </View>
@@ -4414,32 +4464,6 @@ function ExerciseCard({ exercise, draft, onField, onAddSet, onRemoveSet, onFinis
 
       {!collapsed ? (
         <>
-      {recsOff ? (
-        <View style={styles.sugBox}>
-          <Text style={styles.sugReason}>Recomendaciones desactivadas. Reactívalas en Ajustes.</Text>
-        </View>
-      ) : (
-        <View style={styles.sugBox}>
-          <Text style={styles.sugLine}>
-            {bw
-              ? `${sug.reps} reps`
-              : sug.weight !== null
-                ? iso
-                  ? `${sug.weight} kg × ${sug.time}s`
-                  : `${sug.weight} kg × ${sug.reps} reps`
-                : iso
-                  ? `Primera sesión: elige un peso y mantén la posición ${exercise.timeMin}s`
-                  : `Primera sesión: elige un peso y haz ${exercise.repMin} reps`}
-          </Text>
-          <Text style={styles.sugReason}>{sug.reason}</Text>
-          {sug.kind === 'deload' ? (
-            <TouchableOpacity style={styles.linkBtn} onPress={onDeloadInfo}>
-              <Text style={styles.linkBtnText}>Ver por qué descargar</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      )}
-
       {evolve ? (
         <View style={styles.evolveBox}>
           <Text style={styles.sugLine}>Evolución</Text>
@@ -4673,21 +4697,18 @@ function AjustesScreen({ dark, onToggleDark, onLogout, userEmail, userId, recsOn
           </View>
         </TouchableOpacity>
 
-        <Text style={[styles.fieldLabel, styles.topGap]}>Recomendaciones</Text>
+        <Text style={[styles.fieldLabel, styles.topGap]}>Recordatorio semanal</Text>
         <TouchableOpacity
           style={styles.settingRow}
           onPress={() => onToggleRecs(!recsOn)}
         >
           <View style={styles.settingTextWrap}>
-            <Text style={styles.settingTitle}>Mostrar recomendaciones</Text>
-            <Text style={styles.settingHint}>Sugerencias de progresión, descarga y punto de partida.</Text>
+            <Text style={styles.settingTitle}>Recordarme subir reps/peso</Text>
+            <Text style={styles.settingHint}>Una vez por semana, al terminar tu primer entrenamiento.</Text>
           </View>
           <View style={[styles.switch, recsOn && styles.switchOn]}>
             <View style={[styles.switchKnob, recsOn && styles.switchKnobOn]} />
           </View>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.btn, styles.logoutBtn]} onPress={reactivateRecommendations}>
-          <Text style={styles.logoutBtnText}>Reactivar mensajes desactivados</Text>
         </TouchableOpacity>
 
         <Text style={[styles.fieldLabel, styles.topGap]}>Sesión</Text>

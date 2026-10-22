@@ -2,7 +2,7 @@
   "expo": {
     "name": "KO FIT",
     "slug": "impulso-fit",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "scheme": "kofit",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.kofit.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#101016",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -32,6 +32,14 @@
         "expo-audio",
         {
           "enableBackgroundPlayback": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/timer_done.wav"
+          ]
         }
       ],
       "expo-web-browser"
